@@ -37,15 +37,28 @@
 .eqv	BASE_ADDRESS	0x10008000
 .eqv	KEYSTROKE_EVENT	0xffff0000
 
-# Boundaries
-.eqv	LIMIT_X		127
-.eqv	LIMIT_Y		127
-.eqv	GROUND		127
-
 # Colours
-.eqv	BG_COL		0x00000000
 .eqv	RED		0xff0000
 .eqv	GREEN		0x00ff00
+.eqv	BG_COL		0x00000000
+.eqv	BORDER_COL	0x213491
+
+# Boundaries
+.eqv	DISPLAY_W	512
+.eqv	DISPLAY_H	512
+.eqv	LIM_LEFT		8
+.eqv	LIM_RIGHT	119
+.eqv	LIM_UP		8
+.eqv	LIM_DOWN		119
+
+# Number of Rectangles (per Map)
+.eqv	BORDER_N		4
+
+# Rectangle info array indices
+.eqv	RECT_X		0
+.eqv	RECT_Y		4
+.eqv	RECT_W		8
+.eqv	RECT_H		12
 
 # Directions
 .eqv	LEFT		-1
@@ -65,10 +78,14 @@
 
 .data
 padding:	.space	36000   		# Empty space to prevent game data from being overwritten due to large bitmap size
-player:	.word	63, 127, DOWN, 1	# (player_x, player_y, direction, is_grounded)
+player:	.word	63, 119, DOWN, 1	# (player_x, player_y, direction, is_grounded)
 options:	.word	1, 16		# (movement_speed, jump_height) 
 
-.text
+# Area Maps
+# Maps are composed of rectangles. If there are n rectangles, then the array is 4xn
+# A rectangle is stored as (x of top left corner, y of top left corner, width, height)
+border:	.word	0, 0, 128, 8, 0, 120, 128, 8, 120, 8, 8, 112, 0, 8, 8, 112
+
 # (x, y)		player position
 # (0,0)		top left corner
 # (127, 0)	top right corner
@@ -79,7 +96,7 @@ options:	.word	1, 16		# (movement_speed, jump_height)
 # DOWN means facing towards you, UP means facing away
 # player is_grounded is 1 for true, 0 for false
 
-
+.text
 .globl main
 main:
 	li $s0, BASE_ADDRESS 		# $s0 stores the base address for display	
@@ -90,6 +107,11 @@ main:
 	li $v0, 32
 	li $a0, 40			# Sleep 40ms
 	syscall
+
+	li $a0, BORDER_N			# Number of rectangles to draw
+	la $a1, border			# Array of rectangles to draw
+	li $a2, BORDER_COL		# Colour of rectangles to draw
+	jal draw_map
 
 draw_player:
 	jal get_player_pos
@@ -137,7 +159,7 @@ move_left:
 	li $t6, LEFT
 	sw $t6, DIR($s1)			# Player is now facing left
 	sub $t8, $t8, $t7		# player_x - movement_speed
-	bltz $t8, draw_player		# Cannot move left if player_x < 0
+	blt $t8, LIM_LEFT, draw_player	# Cannot move left if player_x < LIM_LEFT
 	sw $t8, POS_X($s1)		# Update player_x
 	j draw_player
 
@@ -146,7 +168,7 @@ move_right:
 	li $t6, RIGHT
 	sw $t6, DIR($s1)			# Player is now facing right
 	add $t8, $t8, $t7		# player_x + movement_speed
-	bgt $t8, LIMIT_X, draw_player	# Cannot move more right if player_x > LIMIT_X
+	bgt $t8, LIM_RIGHT, draw_player# Cannot move more right if player_x > LIM_RIGHT
 	sw $t8, POS_X($s1)		# Update player_x
 	j draw_player
 	
@@ -155,7 +177,7 @@ move_up:
 	li $t6, UP
 	sw $t6, DIR($s1)			# Player is now facing up
 	sub $t9, $t9, $t7		# player_y - movement_speed
-	bltz $t9, draw_player		# Cannot move more up if player_y < 0
+	blt $t9, LIM_UP, draw_player	# Cannot move more up if player_y < LIM_UP
 	sw $t9, POS_Y($s1)		# Update player_y	
 	j draw_player
 
@@ -163,7 +185,7 @@ move_down:
 	li $t6, DOWN
 	sw $t6, DIR($s1)			# Player is now facing down
 	add $t9, $t9, $t7		# player_y + movement_speed
-	bgt $t9, LIMIT_Y, draw_player	# Cannot move more down if player_y > LIMIT_Y
+	bgt $t9, LIM_DOWN, draw_player	# Cannot move more down if player_y > LIM_DOWN
 	sw $t9, POS_Y($s1)		# Update player_y
 	j draw_player
 
@@ -193,15 +215,15 @@ jump_up:
 jump_x:
 	lw $t8, POS_X($s1)
 	add $t8, $t8, $t1		# player_x + units to move left/right/stay still
-	bltz $t8, jump_y			# Cannot move more left if player_x < 0
-	bgt $t8, LIMIT_X, jump_y		# Cannot move more right if player_x > LIMIT_X
+	blt $t8, LIM_LEFT, jump_y	# Cannot move more left if player_x < LIM_LEFT
+	bgt $t8, LIM_RIGHT, jump_y	# Cannot move more right if player_x > LIM_RIGHT
 	sw $t8, POS_X($s1)		# Update player_x
 
 jump_y:
 	lw $t9, POS_Y($s1)
 	sub $t9, $t9, $t0		# player_y - height of jump step
-	bgtz $t9, jump_step		# Cannot move more up if player_y < 0
-	li $t9, 0			# Set player_y to 0
+	bgt $t9, LIM_UP, jump_step	# Cannot move more up if player_y < LIM_UP
+	li $t9, LIM_UP			# Set player_y to LIM_UP
 	
 jump_step:
 	sw $t9, POS_Y($s1)		# Update player_y
@@ -236,15 +258,15 @@ fall_down:
 fall_x:
 	lw $t8, POS_X($s1)
 	add $t8, $t8, $t1		# player_x + units to move left/right/stay still
-	bltz $t8, fall_y			# Cannot move more left if player_x < 0
-	bgt $t8, LIMIT_X, fall_y		# Cannot move more right if player_x > LIMIT_X
+	blt $t8, LIM_LEFT, fall_y	# Cannot move more left if player_x < 0
+	bgt $t8, LIM_RIGHT, fall_y	# Cannot move more right if player_x > LIM_RIGHT
 	sw $t8, POS_X($s1)		# Update player_x
 
 fall_y:	
 	lw $t9, POS_Y($s1)
 	add $t9, $t9, $t0		# player_y + height of fall step
-	ble $t9, GROUND, fall_step	# Cannot move more down if player_y > GROUND
-	li $t9, GROUND			# Set player_y to GROUND
+	ble $t9, LIM_DOWN, fall_step	# Cannot move more down if player_y > LIM_DOWN
+	li $t9, LIM_DOWN			# Set player_y to LIM_DOWN
 	sw $t9, POS_Y($s1)		# Update player_y
 	
 	# Player is grounded
@@ -270,7 +292,6 @@ fall_step:
 	j draw_player
 
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
-
 # Return the address of the player's current position
 get_player_pos:
 	lw $t8, POS_X($s1)
@@ -279,6 +300,57 @@ get_player_pos:
 	sll $t8, $t8, 2			# $t8 = (Unit Width in Pixels)*player_x
 	add $t8, $t8, $t9		# offset = $t8 + $t9
 	add $v0, $s0, $t8		# $v0 = base + offset
+	jr $ra
+	
+# Draw the map of area provided by...
+# $a0 = number of rectangles to draw
+# $a1 = array of rectangles to draw
+# $a2 = colour of rectangles to draw
+draw_map:
+	sll $t0, $a0, 4
+	li $t1, 0
+	
+draw_rectangle:
+	add $t4, $a1, $t1		# Address of current rectangle
+	lw $t6, RECT_X($t4)		# border_x
+	lw $t7, RECT_Y($t4)		# border_y
+	lw $t8, RECT_W($t4)		# border_width
+	lw $t9, RECT_H($t4)		# border_height
+	
+	# Starting position relative to BASE_ADDRESS ($t4)
+	sll $t7, $t7, 9
+	sll $t4, $t6, 2
+	add $t4, $t4, $t7
+	add $t4, $s0, $t4
+	
+	# Save starting position
+	move $t6, $t4
+	
+	# Colouring x limit relative to BASE_ADDRESS ($t8)
+	sll $t8, $t8, 2
+	add $t8, $t4, $t8
+	
+	# Count number of coloured rows
+	li $t5, 0
+
+colour_row:
+	sw $a2, 0($t4)			# Colour pixel
+	addi $t4, $t4, 4			# Next pixel in row
+	blt $t4, $t8, colour_row		# Continue colouring until x limit is reached
+	
+	move $t4, $t6 			# Reset x position
+	addi $t4, $t4, DISPLAY_W		# Jump to next row
+	addi $t8, $t8, DISPLAY_W		# Jump to next row
+	move $t6, $t4			# Save x position
+	addi $t5, $t5, 1			# Increment counter
+	blt $t5, $t9, colour_row		# Continue if $t5 < rectangle_height
+
+	li $v0, 32
+	li $a0, 40			# Sleep 40ms
+	syscall
+	
+	addi $t1, $t1, 16		# Index of next possible rectangle
+	ble $t1, $t0, draw_rectangle	# Check if there are still rectangles to draw
 	jr $ra
 
 end:
