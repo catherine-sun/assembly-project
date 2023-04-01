@@ -257,15 +257,16 @@ jump_player:
 	lw $t1, JUMP_HEIGHT($s1)
 	lw $t7, JUMP_SPAN($s1)
 	
-	# Player is no longer grounded
+	# Player is no longer on ground
 	sw $zero, IS_MAX_DOWN($s1)
 
 	# Initial jump step has height jump_height/2
 	sra $s6, $t1, 1
 
 jump_up:
+	# Check if player cannot jump more up
 	lw $t3, IS_MAX_UP($s1)
-	bnez $t3, fall_player		# Check if player cannot move more up
+	bnez $t3, fall_player
 	
 	# Erase current player position
 	jal get_player_pos
@@ -273,9 +274,12 @@ jump_up:
 	sw $t3, 0($v0)
 
 jump_left:
+	# If the player is not jumping left, check right
 	bne $s4, LEFT, jump_right
+
+	# Check if player cannot jump more left
 	lw $t3, IS_MAX_LEFT($s1)
-	bnez $t3, jump_y		# Check if player cannot move more left
+	bnez $t3, jump_y
 
 	# Check row-wise collision
 	move $a0, $v0			# Current position
@@ -290,9 +294,12 @@ jump_left:
 	j jump_y
 
 jump_right:
+	# If the player is not jumping left or right, jump upwards
 	bne $s4, RIGHT, jump_y
+	
+	# Check if player cannot jump more right
 	lw $t3, IS_MAX_RIGHT($s1)
-	bnez $t3, jump_y		# Check if player cannot move more right
+	bnez $t3, jump_y
 	
 	# Check row-wise collision
 	move $a0, $v0			# Current position
@@ -317,11 +324,7 @@ jump_y:
 	sub $t9, $t9, $v1		# player_y - actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
 	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
-	
-	move $a0, $v1
-	li $v0, 1
-	syscall
-	
+
 	# Draw new player position
 	jal get_player_pos	
 	li $t3, GREEN
@@ -340,53 +343,90 @@ jump_next:
 # -----------------------+= PLAYER FALLING =+------------------------
 # Fall player until they collide with the ground, platform, etc.
 fall_player:
-	# Initial fall step has height 1
-	li $t0, 1
+	lw $s4, DIR($s1)
+	lw $t7, JUMP_SPAN($s1)
 
+	# Player is no longer hitting ceiling
 	sw $zero, IS_MAX_UP($s1)
+	
+	# Initial fall step has height 1
+	li $s6, 1
+
 fall_down:
+	# Check if player cannot fall more down
+	lw $t3, IS_MAX_DOWN($s1)
+	bnez $t3, check_keypress
+	
 	# Erase current player position
 	jal get_player_pos
-	li $t3, BG_COL
+	li $t3, RED
 	sw $t3, 0($v0)
 
-	beq $t1, UP, fall_y		# [FUTURE]
+fall_left:
+	# If the player is not falling left, check right
+	bne $s4, LEFT, fall_right
+	
+	# Check if player cannot fall more left
+	lw $t3, IS_MAX_LEFT($s1)
+	bnez $t3, fall_y
 
-fall_x:
+	# Check row-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected x movement
+	li $a2, LEFT			# Direction of movement
+	jal collision_check
+
 	lw $t8, POS_X($s1)
-	add $t8, $t8, $t1		# player_x + units to move left/right/stay still
-	blt $t8, LIM_LEFT, fall_y	# Cannot move more left if player_x < 0
-	bgt $t8, LIM_RIGHT, fall_y	# Cannot move more right if player_x > LIM_RIGHT
+	sub $t8, $t8, $v1		# player_x - actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
+	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
+	j fall_y
+
+fall_right:
+	# If the player is not falling left or right, fall downwards
+	bne $s4, RIGHT, fall_y
+	
+	# Check if player cannot fall more right
+	lw $t3, IS_MAX_RIGHT($s1)
+	bnez $t3, fall_y
+	
+	# Check row-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected x movement
+	li $a2, RIGHT			# Direction of movement
+	jal collision_check
+
+	lw $t8, POS_X($s1)
+	add $t8, $t8, $v1		# player_x + actual x movement
+	sw $t8, POS_X($s1)		# Update player_x
+	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
 
 fall_y:	
-	lw $t9, POS_Y($s1)
-	add $t9, $t9, $t0		# player_y + height of fall step
-	ble $t9, LIM_DOWN, fall_step	# Cannot move more down if player_y > LIM_DOWN
-	li $t9, LIM_DOWN		# Set player_y to LIM_DOWN
-	sw $t9, POS_Y($s1)		# Update player_y
-	
-	# Player is grounded
-	li $t2, 1
-	sw $t2, IS_MAX_DOWN($s1)
-	j draw_player
+	# Check col-wise collision
+	jal get_player_pos
+	move $a0, $v0			# Current position
+	move $a1, $s6			# Expected y movement
+	li $a2, DOWN			# Direction of movement
+	jal collision_check
 
-fall_step:
+	lw $t9, POS_Y($s1)
+	add $t9, $t9, $v1		# player_y + actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
-	sll $t0, $t0, 1			# Next falling height (multiply by 2)
-	
+	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
+
 	# Draw new player position
 	jal get_player_pos	
 	li $t3, GREEN
 	sw $t3, 0($v0)
-	
+
+fall_next:	
 	li $v0, 32
 	li $a0, 40			# Sleep 40ms
 	syscall
 	
-	lw $t2, IS_MAX_DOWN($s1)
-	beqz $t2, fall_down		# Continue fall if not grounded
-	j draw_player
+	sll $s6, $s6, 1			# Next falling height (multiply by 2)
+	beqz $s6, draw_player
+	j fall_down
 
 
 # ---------------------+= CHECKING COLLISIONS =+---------------------
@@ -457,9 +497,6 @@ collision_test:
 skip:
 	# The step is safe to make
 	add $t0, $t0, $t4
-	
-	li $t3, RED
-	sw $t3, 0($t2)
 	blt $t0, $t1, collision_step
 
 collision_false:
