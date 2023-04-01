@@ -37,80 +37,80 @@
 .eqv	BASE_ADDRESS	0x10008000
 .eqv	KEYSTROKE_EVENT	0xffff0000
 
-# Colours
+# Colours:
 .eqv	RED		0xff0000
 .eqv	GREEN		0x00ff00
 .eqv	BG_COL		0x00000000
 .eqv	BORDER_COL	0x213491
 
-# Boundaries
+# Boundaries:
 .eqv	DISPLAY_W	512
-.eqv	DISPLAY_H	512
-.eqv	LIM_LEFT		8
+.eqv	LIM_LEFT	8
 .eqv	LIM_RIGHT	119
 .eqv	LIM_UP		8
-.eqv	LIM_DOWN		119
+.eqv	LIM_DOWN	119
 
-# Number of Rectangles (per Map)
-.eqv	BORDER_N		4
+# Number of Rectangles (per Map):
+.eqv	BORDER_N	4
+.eqv	MAP1_N		1
 
-# Rectangle info array indices
+# Rectangle info indices:
+.eqv	RECT_ARR_W	16
 .eqv	RECT_X		0
 .eqv	RECT_Y		4
 .eqv	RECT_W		8
 .eqv	RECT_H		12
 
-# Directions
-.eqv	LEFT		-1
-.eqv	RIGHT		1
-.eqv	UP		2
+# Directions:
+.eqv	LEFT		-2
+.eqv	RIGHT		2
+.eqv	UP		1
 .eqv	DOWN		0
 
-# Player info array indices
+# Player info indices:
 .eqv	POS_X		0
 .eqv	POS_Y		4
 .eqv	DIR		8
-.eqv	IS_GROUNDED	12
+.eqv	MOVEMENT_SPEED	12
+.eqv	JUMP_HEIGHT	16
+.eqv	JUMP_SPAN	20
+.eqv	IS_GROUNDED	24
+.eqv	CAN_FLY		28
 
-# Options array indices
-.eqv	MOVEMENT_SPEED	0
-.eqv	JUMP_HEIGHT	4
 
 .data
-padding:	.space	36000   		# Empty space to prevent game data from being overwritten due to large bitmap size
-player:	.word	63, 119, DOWN, 1	# (player_x, player_y, direction, is_grounded)
-options:	.word	1, 16		# (movement_speed, jump_height) 
+# Empty space to prevent game data from being overwritten due to large bitmap size
+padding:	.space	36000
 
-# Area Maps
-# Maps are composed of rectangles. If there are n rectangles, then the array is 4xn
-# A rectangle is stored as (x of top left corner, y of top left corner, width, height)
-border:	.word	0, 0, 128, 8, 0, 120, 128, 8, 120, 8, 8, 112, 0, 8, 8, 112
+# Player info:		pos_x	pos_y	dir	movement_speed	jump_height	jump_span
+player:		.word	63, 	119, 	DOWN,	2, 		32, 		2,
+#			is_grounded	can_fly
+			1,		1
 
-# (x, y)		player position
-# (0,0)		top left corner
-# (127, 0)	top right corner
-# (0, 127)	bottom left corner
-# (127, 127)	bottom right corner
+# Area Maps:		Maps are composed of rectangles. If there are n rectangles, then the array is 4xn
+# 			Every rectangle is saved as (x of top left corner, y of top left corner, width, height)
+border:		.word	0, 0, 128, 8, 0, 120, 128, 8, 120, 8, 8, 112, 0, 8, 8, 112
+map1:		.word	70, 110, 20, 8
 
-# player jump_height is a power of 2
-# DOWN means facing towards you, UP means facing away
-# player is_grounded is 1 for true, 0 for false
 
 .text
 .globl main
 main:
-	li $s0, BASE_ADDRESS 		# $s0 stores the base address for display	
+	li $s0, BASE_ADDRESS 		# $s0 stores the base address for display
 	la $s1, player			# $s1 stores the player info
-	la $s2, options			# $s2 stores the options
-	li $s7,	KEYSTROKE_EVENT		# $s7 stores the address for checking if a keystroke event happened
+	li $s7,	KEYSTROKE_EVENT		# $s7 stores the address for keystroke event
 
 	li $v0, 32
 	li $a0, 40			# Sleep 40ms
 	syscall
 
-	li $a0, BORDER_N			# Number of rectangles to draw
+	li $a0, BORDER_N		# Number of rectangles to draw
 	la $a1, border			# Array of rectangles to draw
 	li $a2, BORDER_COL		# Colour of rectangles to draw
+	jal draw_map
+	
+	li $a0, MAP1_N			# Number of rectangles to draw
+	la $a1, map1			# Array of rectangles to draw
 	jal draw_map
 
 draw_player:
@@ -118,76 +118,119 @@ draw_player:
 	li $t3, GREEN
 	sw $t3, 0($v0)
 	
-	lw $t2, IS_GROUNDED($s1)
-	beqz $t2, fall_player		# Let player fall if not grounded
+	lw $t3, IS_GROUNDED($s1)
+	beqz $t3, fall_player		# Let player fall if not grounded
 	
 check_keypress: 
-	lw $t6, 0($s7)
-	bne $t6, 1, continue_check_keypress
-
-	lw $t6, 4($s7)
+	lw $s6, 0($s7)
+	bne $s6, 1, check_keypress
+	lw $s6, 4($s7)
 	
-	beq $t6, 0x62, end		# Hit 'b' to end program
+	beq $s6, 0x62, end		# Hit 'b' to end program
+	beq $s6, 0x20, jump_player	# ASCII code of ' ' is 0x20
+	beq $s6, 0x61, move_player	# ASCII code of 'a' is 0x61
+	beq $s6, 0x64, move_player 	# ACSII code of 'd' is 0x64
+	beq $s6, 0x77, move_player 	# ACSII code of 'w' is 0x77
+	beq $s6, 0x73, move_player 	# ACSII code of 's' is 0x73
 	
-	beq $t6, 0x20, jump_player	# ASCII code of ' ' is 0x20
-	beq $t6, 0x61, move_player	# ASCII code of 'a' is 0x61
-	beq $t6, 0x64, move_player 	# ACSII code of 'd' is 0x64
-	beq $t6, 0x77, move_player 	# ACSII code of 'w' is 0x77
-	beq $t6, 0x73, move_player 	# ACSII code of 's' is 0x73
-	
-	li $t6, 0
-
-continue_check_keypress:
+	li $s6, 0
+	li $v0, 32
+	li $a0, 40			# Sleep 40ms
+	syscall
 	j check_keypress
-	
+
+
 # -----------------------+= PLAYER MOVEMENT =+-----------------------
 # Move player in the direction of the key event, by the number of units
 # specified by its movement_speed. Update the direcion the player is facing
 move_player:
-	lw $t7, MOVEMENT_SPEED($s2)
+	lw $t7, MOVEMENT_SPEED($s1)
 	
 	# Erase current player position
 	jal get_player_pos
-	li $t3, RED
+	li $t3, BG_COL
 	sw $t3, 0($v0)
 	
 	lw $t8, POS_X($s1)
 	lw $t9, POS_Y($s1)
 
 move_left:
-	bne $t6, 0x61, move_right	# If the player is not moving left, check right
-	li $t6, LEFT
-	sw $t6, DIR($s1)			# Player is now facing left
-	sub $t8, $t8, $t7		# player_x - movement_speed
-	blt $t8, LIM_LEFT, draw_player	# Cannot move left if player_x < LIM_LEFT
+	# If the player is not moving left, check right
+	bne $s6, 0x61, move_right
+	
+	# Player is now facing left
+	li $t3, LEFT
+	sw $t3, DIR($s1)
+	
+	# Check row-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected x movement
+	li $a2, LEFT			# Direction of movement
+	jal collision_check
+
+	sub $t8, $t8, $v1		# player_x - actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
 	j draw_player
 
 move_right:
-	bne $t6, 0x64, move_up		# If the player is not moving left or right, check up	
-	li $t6, RIGHT
-	sw $t6, DIR($s1)			# Player is now facing right
-	add $t8, $t8, $t7		# player_x + movement_speed
-	bgt $t8, LIM_RIGHT, draw_player# Cannot move more right if player_x > LIM_RIGHT
+	# If the player is not moving left or right, check up
+	bne $s6, 0x64, move_up
+	
+	# Player is now facing right
+	li $t3, RIGHT
+	sw $t3, DIR($s1)
+
+	# Check row-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected x movement
+	li $a2, RIGHT			# Direction of movement
+	jal collision_check
+
+	add $t8, $t8, $v1		# player_x + actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
 	j draw_player
 	
 move_up:
-	bne $t6, 0x77, move_down		# If the player is not moving left, right, or up, it must be moving down
-	li $t6, UP
-	sw $t6, DIR($s1)			# Player is now facing up
-	sub $t9, $t9, $t7		# player_y - movement_speed
-	blt $t9, LIM_UP, draw_player	# Cannot move more up if player_y < LIM_UP
+	# If the player is not moving left, right, or up, it must be moving down
+	bne $s6, 0x77, move_down
+	
+	# Player is now facing up
+	li $t3, UP
+	sw $t3, DIR($s1)
+	
+	# Check if flying is enabled
+	lw $t3, CAN_FLY($s1)
+	beqz $t3, draw_player
+	
+	# Check col-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected y movement
+	li $a2, UP			# Direction of movement
+	jal collision_check
+	
+	sub $t9, $t9, $v1		# player_y - actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y	
 	j draw_player
 
 move_down:
-	li $t6, DOWN
-	sw $t6, DIR($s1)			# Player is now facing down
-	add $t9, $t9, $t7		# player_y + movement_speed
-	bgt $t9, LIM_DOWN, draw_player	# Cannot move more down if player_y > LIM_DOWN
+	# Player is now facing down
+	li $t3, DOWN
+	sw $t3, DIR($s1)
+	
+	# Check if flying is enabled
+	lw $t3, CAN_FLY($s1)
+	beqz $t3, draw_player
+	
+	# Check col-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected y movement
+	li $a2, DOWN			# Direction of movement
+	jal collision_check
+	
+	add $t9, $t9, $v1		# player_y + actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
 	j draw_player
+
 
 # -----------------------+= PLAYER JUMPING =+------------------------
 # Jump player in the direction it is facing, in a parabolic jump whose
@@ -195,7 +238,7 @@ move_down:
 # Precondition:	jump_height is a positive power of 2
 jump_player:
 	lw $t1, DIR($s1)
-	lw $t6, JUMP_HEIGHT($s2)
+	lw $t6, JUMP_HEIGHT($s1)
 	
 	# Player is no longer grounded
 	li $t2, 0
@@ -207,17 +250,16 @@ jump_player:
 jump_up:	
 	# Erase current player position
 	jal get_player_pos
-	li $t3, RED
+	li $t3, BG_COL
 	sw $t3, 0($v0)
-
+	
+	lw $t8, POS_X($s1)
 	beq $t1, UP, jump_y		# [FUTURE] If the player is facing up, possibly trying to climb a ladder
 
 jump_x:
-	lw $t8, POS_X($s1)
 	add $t8, $t8, $t1		# player_x + units to move left/right/stay still
 	blt $t8, LIM_LEFT, jump_y	# Cannot move more left if player_x < LIM_LEFT
 	bgt $t8, LIM_RIGHT, jump_y	# Cannot move more right if player_x > LIM_RIGHT
-	sw $t8, POS_X($s1)		# Update player_x
 
 jump_y:
 	lw $t9, POS_Y($s1)
@@ -226,6 +268,7 @@ jump_y:
 	li $t9, LIM_UP			# Set player_y to LIM_UP
 	
 jump_step:
+	sw $t8, POS_X($s1)		# Update player_x
 	sw $t9, POS_Y($s1)		# Update player_y
 	sra $t0, $t0, 1			# Next jump height (divide by 2)
 
@@ -241,6 +284,7 @@ jump_step:
 	beqz $t0, draw_player
 	j jump_up
 
+
 # -----------------------+= PLAYER FALLING =+------------------------
 # Fall player until they collide with the ground, platform, etc.
 fall_player:
@@ -250,7 +294,7 @@ fall_player:
 fall_down:
 	# Erase current player position
 	jal get_player_pos
-	li $t3, RED
+	li $t3, BG_COL
 	sw $t3, 0($v0)
 
 	beq $t1, UP, fall_y		# [FUTURE]
@@ -266,7 +310,7 @@ fall_y:
 	lw $t9, POS_Y($s1)
 	add $t9, $t9, $t0		# player_y + height of fall step
 	ble $t9, LIM_DOWN, fall_step	# Cannot move more down if player_y > LIM_DOWN
-	li $t9, LIM_DOWN			# Set player_y to LIM_DOWN
+	li $t9, LIM_DOWN		# Set player_y to LIM_DOWN
 	sw $t9, POS_Y($s1)		# Update player_y
 	
 	# Player is grounded
@@ -291,12 +335,71 @@ fall_step:
 	beqz $t2, fall_down		# Continue fall if not grounded
 	j draw_player
 
+
+# ---------------------+= CHECKING COLLISIONS =+---------------------
+# Check for collisions while traveling
+# $a0 = current position,	$a1 = expected movement,	$a2 = direction of movement
+# $v0 = 1 if a collision occurred, 0 if there was no collision,	$v1 = actual movement
+collision_check:
+	li $t0, 0			# Movement step
+	
+	# Depending on travel direction...
+	# $t1 = expected x or y movement 			(DISPLAY_W)*$a1 if up/down,	(Unit Width in Pixels)*$a1 if left/right
+	# $t4 =	length of one step relative to BASE_ADDRESS 	DISPLAY_W if up/down,		Unit Width in Pixels if left/right
+	# $t6 =	direction of step relative to BASE_ADDRESS 	-1 if left/up,			1 if right/down
+	sll $t1, $a1, 2
+	li $t4, 4
+	li $t6, -1
+	beq $a2, LEFT, collision_step
+	
+	sll $t1, $a1, 9
+	li $t4, DISPLAY_W
+	beq $a2, UP, collision_step
+	
+	li $t6, 1
+	beq $a2, DOWN, collision_step
+
+	sll $t1, $a1, 2
+	li $t4, 4
+	
+collision_step:
+	# Next step from current position
+	add $t2, $t0, $t4
+	mult $t2, $t6
+	mflo $t2
+	add $t2, $a0, $t2
+	
+	# Check colour on this step
+	lw $t3, 0($t2)
+	bne $t3, BG_COL, collision_true
+	
+	# The step is safe to make
+	add $t0, $t0, $t4
+	blt $t0, $t1, collision_step
+
+collision_false:
+	li $v0, 0			# No collision occurred
+	move $v1, $a1			# Actual movement is expected movement
+	jr $ra
+
+collision_true:
+	li $v0, 1			# A collision occurred
+	sra $t5, $t0, 2			# Get movement in terms of x
+	beq $a2, LEFT, collision_move
+	beq $a2, RIGHT, collision_move
+	sra $t5, $t0, 9			# Get movement in terms of y
+
+collision_move:
+	move $v1, $t5			# Actual movement
+	jr $ra
+
+
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
 # Return the address of the player's current position
 get_player_pos:
 	lw $t8, POS_X($s1)
 	lw $t9, POS_Y($s1)
-	sll $t9, $t9, 9			# $t9 = (Display Height in Pixels)*player_y
+	sll $t9, $t9, 9			# $t9 = (Display With in Pixels)*player_y
 	sll $t8, $t8, 2			# $t8 = (Unit Width in Pixels)*player_x
 	add $t8, $t8, $t9		# offset = $t8 + $t9
 	add $v0, $s0, $t8		# $v0 = base + offset
@@ -335,21 +438,21 @@ draw_rectangle:
 
 colour_row:
 	sw $a2, 0($t4)			# Colour pixel
-	addi $t4, $t4, 4			# Next pixel in row
-	blt $t4, $t8, colour_row		# Continue colouring until x limit is reached
+	addi $t4, $t4, 4		# Next pixel in row
+	blt $t4, $t8, colour_row	# Continue colouring until x limit is reached
 	
 	move $t4, $t6 			# Reset x position
-	addi $t4, $t4, DISPLAY_W		# Jump to next row
-	addi $t8, $t8, DISPLAY_W		# Jump to next row
+	addi $t4, $t4, DISPLAY_W	# Jump to next row
+	addi $t8, $t8, DISPLAY_W	# Jump to next row
 	move $t6, $t4			# Save x position
-	addi $t5, $t5, 1			# Increment counter
-	blt $t5, $t9, colour_row		# Continue if $t5 < rectangle_height
+	addi $t5, $t5, 1		# Increment counter
+	blt $t5, $t9, colour_row	# Continue if $t5 < rectangle_height
 
 	li $v0, 32
 	li $a0, 40			# Sleep 40ms
 	syscall
 	
-	addi $t1, $t1, 16		# Index of next possible rectangle
+	addi $t1, $t1, RECT_ARR_W	# Get next possible rectangle (increment by width of rectangle array)
 	ble $t1, $t0, draw_rectangle	# Check if there are still rectangles to draw
 	jr $ra
 
