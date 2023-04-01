@@ -45,7 +45,10 @@
 
 # Boundaries:
 .eqv	DISPLAY_W	512
-.eqv	LIM_LEFT	8
+.eqv	LIM_LOWER	32
+.eqv	LIM_UPPER	476
+
+.eqv	LIM_LEFT	8		# REMOVE THESE AFTER FALL COLLISIONS
 .eqv	LIM_RIGHT	119
 .eqv	LIM_UP		8
 .eqv	LIM_DOWN	119
@@ -74,18 +77,21 @@
 .eqv	MOVEMENT_SPEED	12
 .eqv	JUMP_HEIGHT	16
 .eqv	JUMP_SPAN	20
-.eqv	IS_GROUNDED	24
-.eqv	CAN_FLY		28
+.eqv	IS_MAX_LEFT	24
+.eqv	IS_MAX_RIGHT	28
+.eqv	IS_MAX_UP	32
+.eqv	IS_MAX_DOWN	36
+.eqv	CAN_FLY		40
 
 
 .data
 # Empty space to prevent game data from being overwritten due to large bitmap size
 padding:	.space	36000
 
-# Player info:		pos_x	pos_y	dir	movement_speed	jump_height	jump_span
-player:		.word	63, 	119, 	DOWN,	2, 		32, 		2,
-#			is_grounded	can_fly
-			1,		1
+# Player info:		pos_x	pos_y	dir		movement_speed	jump_height	jump_span
+player:		.word	63, 	119, 	DOWN,		2, 		32, 		2,
+#			is_max_left	is_max_right	is_max_up	is_max_down	can_fly
+			0,		0,		0,		1,		1
 
 # Area Maps:		Maps are composed of rectangles. If there are n rectangles, then the array is 4xn
 # 			Every rectangle is saved as (x of top left corner, y of top left corner, width, height)
@@ -118,8 +124,8 @@ draw_player:
 	li $t3, GREEN
 	sw $t3, 0($v0)
 	
-	lw $t3, IS_GROUNDED($s1)
-	beqz $t3, fall_player		# Let player fall if not grounded
+	lw $t3, IS_MAX_DOWN($s1)
+	beqz $t3, fall_player		# Let player fall if it can still move down
 	
 check_keypress: 
 	lw $s6, 0($s7)
@@ -151,8 +157,10 @@ move_player:
 	li $t3, BG_COL
 	sw $t3, 0($v0)
 	
-	lw $t8, POS_X($s1)
-	lw $t9, POS_Y($s1)
+	# Reset collision tracking
+	sw $zero, IS_MAX_LEFT($s1)
+	sw $zero, IS_MAX_RIGHT($s1)
+	sw $zero, IS_MAX_UP($s1)
 
 move_left:
 	# If the player is not moving left, check right
@@ -168,8 +176,10 @@ move_left:
 	li $a2, LEFT			# Direction of movement
 	jal collision_check
 
+	lw $t8, POS_X($s1)
 	sub $t8, $t8, $v1		# player_x - actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
+	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
 	j draw_player
 
 move_right:
@@ -186,8 +196,10 @@ move_right:
 	li $a2, RIGHT			# Direction of movement
 	jal collision_check
 
+	lw $t8, POS_X($s1)
 	add $t8, $t8, $v1		# player_x + actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
+	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
 	j draw_player
 	
 move_up:
@@ -208,8 +220,10 @@ move_up:
 	li $a2, UP			# Direction of movement
 	jal collision_check
 	
+	lw $t9, POS_Y($s1)
 	sub $t9, $t9, $v1		# player_y - actual y movement
-	sw $t9, POS_Y($s1)		# Update player_y	
+	sw $t9, POS_Y($s1)		# Update player_y
+	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
 	j draw_player
 
 move_down:
@@ -220,15 +234,17 @@ move_down:
 	# Check if flying is enabled
 	lw $t3, CAN_FLY($s1)
 	beqz $t3, draw_player
-	
+
 	# Check col-wise collision
 	move $a0, $v0			# Current position
 	move $a1, $t7			# Expected y movement
 	li $a2, DOWN			# Direction of movement
 	jal collision_check
 	
+	lw $t9, POS_Y($s1)
 	add $t9, $t9, $v1		# player_y + actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
+	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
 	j draw_player
 
 
@@ -237,51 +253,87 @@ move_down:
 # height peaks at the number of units specified by its jump_height.
 # Precondition:	jump_height is a positive power of 2
 jump_player:
-	lw $t1, DIR($s1)
-	lw $t6, JUMP_HEIGHT($s1)
+	lw $s4, DIR($s1)
+	lw $t1, JUMP_HEIGHT($s1)
+	lw $t7, JUMP_SPAN($s1)
 	
 	# Player is no longer grounded
-	li $t2, 0
-	sw $t2, IS_GROUNDED($s1)
+	sw $zero, IS_MAX_DOWN($s1)
 
 	# Initial jump step has height jump_height/2
-	sra $t0, $t6, 1
+	sra $s6, $t1, 1
 
-jump_up:	
+jump_up:
+	lw $t3, IS_MAX_UP($s1)
+	bnez $t3, fall_player		# Check if player cannot move more up
+	
 	# Erase current player position
 	jal get_player_pos
-	li $t3, BG_COL
+	li $t3, RED
 	sw $t3, 0($v0)
-	
+
+jump_left:
+	bne $s4, LEFT, jump_right
+	lw $t3, IS_MAX_LEFT($s1)
+	bnez $t3, jump_y		# Check if player cannot move more left
+
+	# Check row-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected x movement
+	li $a2, LEFT			# Direction of movement
+	jal collision_check
+
 	lw $t8, POS_X($s1)
-	beq $t1, UP, jump_y		# [FUTURE] If the player is facing up, possibly trying to climb a ladder
-
-jump_x:
-	add $t8, $t8, $t1		# player_x + units to move left/right/stay still
-	blt $t8, LIM_LEFT, jump_y	# Cannot move more left if player_x < LIM_LEFT
-	bgt $t8, LIM_RIGHT, jump_y	# Cannot move more right if player_x > LIM_RIGHT
-
-jump_y:
-	lw $t9, POS_Y($s1)
-	sub $t9, $t9, $t0		# player_y - height of jump step
-	bgt $t9, LIM_UP, jump_step	# Cannot move more up if player_y < LIM_UP
-	li $t9, LIM_UP			# Set player_y to LIM_UP
-	
-jump_step:
+	sub $t8, $t8, $v1		# player_x - actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
-	sw $t9, POS_Y($s1)		# Update player_y
-	sra $t0, $t0, 1			# Next jump height (divide by 2)
+	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
+	j jump_y
 
+jump_right:
+	bne $s4, RIGHT, jump_y
+	lw $t3, IS_MAX_RIGHT($s1)
+	bnez $t3, jump_y		# Check if player cannot move more right
+	
+	# Check row-wise collision
+	move $a0, $v0			# Current position
+	move $a1, $t7			# Expected x movement
+	li $a2, RIGHT			# Direction of movement
+	jal collision_check
+
+	lw $t8, POS_X($s1)
+	add $t8, $t8, $v1		# player_x + actual x movement
+	sw $t8, POS_X($s1)		# Update player_x
+	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
+
+jump_y:	
+	# Check col-wise collision
+	jal get_player_pos
+	move $a0, $v0			# Current position
+	move $a1, $s6			# Expected y movement
+	li $a2, UP			# Direction of movement
+	jal collision_check
+
+	lw $t9, POS_Y($s1)
+	sub $t9, $t9, $v1		# player_y - actual y movement
+	sw $t9, POS_Y($s1)		# Update player_y
+	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
+	
+	move $a0, $v1
+	li $v0, 1
+	syscall
+	
 	# Draw new player position
 	jal get_player_pos	
 	li $t3, GREEN
 	sw $t3, 0($v0)
-	
+
+jump_next:	
 	li $v0, 32
 	li $a0, 40			# Sleep 40ms
 	syscall
 	
-	beqz $t0, draw_player
+	sra $s6, $s6, 1			# Next jump height (divide by 2)
+	beqz $s6, draw_player
 	j jump_up
 
 
@@ -291,6 +343,7 @@ fall_player:
 	# Initial fall step has height 1
 	li $t0, 1
 
+	sw $zero, IS_MAX_UP($s1)
 fall_down:
 	# Erase current player position
 	jal get_player_pos
@@ -315,7 +368,7 @@ fall_y:
 	
 	# Player is grounded
 	li $t2, 1
-	sw $t2, IS_GROUNDED($s1)
+	sw $t2, IS_MAX_DOWN($s1)
 	j draw_player
 
 fall_step:
@@ -331,7 +384,7 @@ fall_step:
 	li $a0, 40			# Sleep 40ms
 	syscall
 	
-	lw $t2, IS_GROUNDED($s1)
+	lw $t2, IS_MAX_DOWN($s1)
 	beqz $t2, fall_down		# Continue fall if not grounded
 	j draw_player
 
@@ -350,31 +403,63 @@ collision_check:
 	sll $t1, $a1, 2
 	li $t4, 4
 	li $t6, -1
-	beq $a2, LEFT, collision_step
-	
+	beq $a2, LEFT, collision_step	# Done init for left direction
+
 	sll $t1, $a1, 9
 	li $t4, DISPLAY_W
-	beq $a2, UP, collision_step
+	beq $a2, UP, collision_step	# Done init for up direction
 	
 	li $t6, 1
-	beq $a2, DOWN, collision_step
+	beq $a2, DOWN, collision_step	# Done init for down direction
 
 	sll $t1, $a1, 2
-	li $t4, 4
-	
+	li $t4, 4			# Done init for up direction
+
 collision_step:
 	# Next step from current position
 	add $t2, $t0, $t4
 	mult $t2, $t6
 	mflo $t2
 	add $t2, $a0, $t2
+
+	li $t3, DISPLAY_W
+	beq $a2, UP, collision_y
+	beq $a2, DOWN, collision_y
+
+collision_x:	
+	# Get position to compare with boundaries
+	div $t2, $t3
+	mfhi $t3
 	
+	# Check step w.r.t. boundaries
+	blt $t3, LIM_LOWER, collision_true
+	bgt $t3, LIM_UPPER, collision_true
+	
+	j collision_test
+	
+collision_y:
+	# Get position to compare with boundaries
+	sub $t5, $t2, $s0
+	div $t5, $t3
+	mflo $t3
+	sll $t3, $t3, 2
+	
+	# Check step w.r.t. boundaries
+	blt $t3, LIM_LOWER, collision_true
+	bgt $t3, LIM_UPPER, collision_true
+
+collision_test:
 	# Check colour on this step
 	lw $t3, 0($t2)
+	beq $t3, RED,	skip
 	bne $t3, BG_COL, collision_true
 	
+skip:
 	# The step is safe to make
 	add $t0, $t0, $t4
+	
+	li $t3, RED
+	sw $t3, 0($t2)
 	blt $t0, $t1, collision_step
 
 collision_false:
@@ -392,7 +477,7 @@ collision_true:
 collision_move:
 	move $v1, $t5			# Actual movement
 	jr $ra
-
+	
 
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
 # Return the address of the player's current position
