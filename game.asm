@@ -80,6 +80,10 @@
 .eqv	IS_MAX_UP	44
 .eqv	IS_MAX_DOWN	48
 
+# Player animation
+.eqv	STACK_BOTTOM	0x10008000
+.eqv	ERASE		0
+.eqv	COLOUR		1
 
 .data
 # Empty space to prevent game data from being overwritten due to large bitmap size
@@ -92,9 +96,9 @@ map1:		.word	70, 110, 20, 4, 20, 114, 20, 4, 30, 90, 30, 8, 70, 60, 30, 8
 test_box:	.word	52, 111, 12, 9
 
 # Player info:		pos_x	pos_y	player_w	player_h	dir
-player:		.word	63, 	119, 	12,		9,		DOWN,
+player:		.word	63, 	119, 	12,		9,		RIGHT,
 #			movement_speed	jump_height	jump_span	can_fly
-			2, 		32, 		2,		0
+			2, 		32, 		2,		1
 #			is_max_left	is_max_right	is_max_up	is_max_down
 			0,		0,		0,		1
 
@@ -118,15 +122,28 @@ main:
 	la $a1, map1			# Array of rectangles to draw
 	jal draw_map
 
-draw_player:
 	jal get_player_pos
 	li $t3, GREEN
 	sw $t3, 0($v0)
 	
-	jal test
+	addi $sp, $sp, -16
+	li $t3, STACK_BOTTOM
+	sw $t3, 12($sp)
+	li $t3, RIGHT
+	sw $t3, 8($sp)
+	li $t3, COLOUR
+	sw $t3, 4($sp)
+	sw $v0, 0($sp)
+
+draw_player:
+	#jal test
 	
 	lw $t3, IS_MAX_DOWN($s1)
 	beqz $t3, fall_player		# Let player fall if it can still move down
+	
+	lw $t3, 0($sp)
+	beq $t3, STACK_BOTTOM, check_keypress
+	j player_animation
 	
 check_keypress: 
 	lw $s6, 0($s7)
@@ -171,8 +188,8 @@ move_player:
 	
 	# Erase current player position
 	jal get_player_pos
-	li $t3, BG_COL
-	sw $t3, 0($v0)
+	#li $t3, BG_COL
+	#sw $t3, 0($v0)
 	move $s4, $v0
 	
 	# Reset collision tracking
@@ -198,9 +215,22 @@ move_left:
 	sub $t8, $t8, $v1		# player_x - actual x movement
 	sw $t8, POS_X($s1)		# Update player_x
 	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
-
-	move $v0, $s4
-	jal erase
+	
+	addi $sp, $sp, -24
+	jal get_player_pos
+	li $t3, LEFT
+	sw $t3, 20($sp)
+	li $t3, COLOUR
+	sw $t3, 16($sp)
+	sw $v0, 12($sp)
+	lw $t3, DIR($s1)
+	sw $t3, 8($sp)
+	li $t3, ERASE
+	sw $t3, 4($sp)
+	sw $s4, 0($sp)
+	
+	#move $v0, $s4
+	#jal erase
 	
 	# Player is now facing left
 	li $t3, LEFT
@@ -222,8 +252,21 @@ move_right:
 	sw $t8, POS_X($s1)		# Update player_x
 	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
 	
-	move $v0, $s4
-	jal erase
+	addi $sp, $sp, -24
+	jal get_player_pos
+	li $t3, RIGHT
+	sw $t3, 20($sp)
+	li $t3, COLOUR
+	sw $t3, 16($sp)
+	sw $v0, 12($sp)
+	lw $t3, DIR($s1)
+	sw $t3, 8($sp)
+	li $t3, ERASE
+	sw $t3, 4($sp)
+	sw $s4, 0($sp)
+	
+	#move $v0, $s4
+	#jal erase
 	# Player is now facing right
 	li $t3, RIGHT
 	sw $t3, DIR($s1)
@@ -233,13 +276,9 @@ move_up:
 	# If the player is not moving left, right, or up, it must be moving down
 	bne $s6, 0x77, move_down
 	
-	# Player is now facing up
-	li $t3, UP
-	sw $t3, DIR($s1)
-	
 	# Check if flying is enabled
 	lw $t3, CAN_FLY($s1)
-	beqz $t3, draw_player
+	beqz $t3, check_keypress
 	
 	# Check col-wise collision
 	move $a0, $v0			# Current position
@@ -251,13 +290,26 @@ move_up:
 	sub $t9, $t9, $v1		# player_y - actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
 	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
+	
+	addi $sp, $sp, -24
+	jal get_player_pos
+	li $t3, UP
+	sw $t3, 20($sp)
+	li $t3, COLOUR
+	sw $t3, 16($sp)
+	sw $v0, 12($sp)
+	lw $t3, DIR($s1)
+	sw $t3, 8($sp)
+	li $t3, ERASE
+	sw $t3, 4($sp)
+	sw $s4, 0($sp)
+	
+	# Player is now facing up
+	li $t3, UP
+	sw $t3, DIR($s1)
 	j draw_player
 
 move_down:	
-	# Player is now facing down
-	li $t3, DOWN
-	sw $t3, DIR($s1)
-	
 	# Check if flying is enabled
 	lw $t3, CAN_FLY($s1)
 	beqz $t3, draw_player
@@ -272,6 +324,23 @@ move_down:
 	add $t9, $t9, $v1		# player_y + actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
 	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
+	
+	addi $sp, $sp, -24
+	jal get_player_pos
+	li $t3, DOWN
+	sw $t3, 20($sp)
+	li $t3, COLOUR
+	sw $t3, 16($sp)
+	sw $v0, 12($sp)
+	lw $t3, DIR($s1)
+	sw $t3, 8($sp)
+	li $t3, ERASE
+	sw $t3, 4($sp)
+	sw $s4, 0($sp)
+	
+	# Player is now facing down
+	li $t3, DOWN
+	sw $t3, DIR($s1)
 	j draw_player
 
 
@@ -346,17 +415,29 @@ jump_y:
 	sw $t9, POS_Y($s1)		# Update player_y
 	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
 
-	move $v0, $s4
-	jal erase
+	addi $sp, $sp, -24
+	lw $t3, DIR($s1)
+	sw $t3, 20($sp)
+	li $t3, ERASE
+	sw $t3, 16($sp)
+	sw $s4, 12($sp)
+	jal get_player_pos
+	lw $t3, DIR($s1)
+	sw $t3, 8($sp)
+	li $t3, COLOUR
+	sw $t3, 4($sp)
+	sw $v0, 0($sp)
+	#move $v0, $s4
+	#jal erase
 	# Draw new player position
-	jal get_player_pos	
-	li $t3, GREEN
-	sw $t3, 0($v0)
-	jal test
+	#jal get_player_pos	
+	#li $t3, GREEN
+	#sw $t3, 0($v0)
+	#jal test
 
 jump_next:
 	sra $s6, $s6, 1			# Next jump height (divide by 2)
-	beqz $s6, draw_player
+	beqz $s6, player_animation
 	j jump_up
 
 
@@ -434,14 +515,26 @@ fall_y:
 	add $t9, $t9, $v1		# player_y + actual y movement
 	sw $t9, POS_Y($s1)		# Update player_y
 	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
-
-	move $v0, $s4
-	jal erase
+	
+	addi $sp, $sp, -24
+	lw $t3, DIR($s1)
+	sw $t3, 20($sp)
+	li $t3, ERASE
+	sw $t3, 16($sp)
+	sw $s4, 12($sp)
+	jal get_player_pos
+	lw $t3, DIR($s1)
+	sw $t3, 8($sp)
+	li $t3, COLOUR
+	sw $t3, 4($sp)
+	sw $v0, 0($sp)
+	#move $v0, $s4
+	#jal erase
 	# Draw new player position
-	jal get_player_pos	
-	li $t3, GREEN
-	sw $t3, 0($v0)
-	jal test
+	#jal get_player_pos	
+	#li $t3, GREEN
+	#sw $t3, 0($v0)
+	#jal test
 
 fall_next:	
 	li $v0, 32
@@ -449,7 +542,7 @@ fall_next:
 	syscall
 	
 	sll $s6, $s6, 1			# Next falling height (multiply by 2)
-	beqz $s6, draw_player
+	beqz $s6, player_animation
 	j fall_down
 
 
@@ -607,162 +700,172 @@ colour_row:
 	addi $t1, $t1, RECT_ARR_W	# Get next possible rectangle (increment by width of rectangle array)
 	blt $t1, $t0, draw_rectangle	# Check if there are still rectangles to draw
 	jr $ra
+	
+player_animation:
+	lw $s3, 0($sp)
+	addi $sp, $sp, 4
+	ble $s3, STACK_BOTTOM, done
+	
+	lw $s4, 0($sp)
+	lw $s5, 4($sp)
+	addi $sp, $sp, 8
+	beq $s4, ERASE, erase
 
-erase:
-	#jr $ra
-	li $t3, BG_COL
-	li $t4, BG_COL
-	li $t5, BG_COL
-	j test_draw
-
-test:
-	#jr $ra
+colour:
 	li $t3, 0xadd07d
 	li $t4, 0x5bbe74
 	li $t5, 0x332935
+	j test_draw
+
+erase:
+	li $t3, BG_COL
+	li $t4, BG_COL
+	li $t5, BG_COL
 
 test_draw:
-	lw $t6, DIR($s1)
-	beq $t6, LEFT, flipped
-	beq $t6, DOWN, flipped
-	sw $t3, 0($v0)
-	sw $t3, -20($v0)
-	sw $t3, -40($v0)
-	sw $t3, -44($v0)
+	beq $s5, LEFT, flipped
+	beq $s5, DOWN, flipped
+	sw $t3, 0($s3)
+	sw $t3, -20($s3)
+	sw $t3, -40($s3)
+	sw $t3, -44($s3)
 	
 	li $t6, 0xff0000
-	sw $t6, 0($v0)
+	sw $t6, 0($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -20($v0)
-	sw $t3, -24($v0)
-	sw $t3, -36($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -4($s3)
+	sw $t3, -20($s3)
+	sw $t3, -24($s3)
+	sw $t3, -36($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
-	sw $t3, -20($v0)
-	sw $t3, -24($v0)
-	sw $t3, -32($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
+	sw $t3, -20($s3)
+	sw $t3, -24($s3)
+	sw $t3, -32($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
-	sw $t3, -20($v0)
-	sw $t3, -24($v0)
-	sw $t4, -28($v0)
-	sw $t3, -32($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
+	sw $t3, -20($s3)
+	sw $t3, -24($s3)
+	sw $t4, -28($s3)
+	sw $t3, -32($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t4, -16($v0)
-	sw $t4, -20($v0)
-	sw $t3, -24($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t4, -16($s3)
+	sw $t4, -20($s3)
+	sw $t3, -24($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t5, 0($v0)
-	sw $t3, -4($v0)
-	sw $t5, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t5, 0($s3)
+	sw $t3, -4($s3)
+	sw $t5, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -16($s3)
 	
-	jr $ra
+	j player_animation
 	
 flipped:
-	sw $t3, -44($v0)
-	sw $t3, -28($v0)
-	sw $t3, -4($v0)
-	sw $t3, 0($v0)
+	sw $t3, -44($s3)
+	sw $t3, -28($s3)
+	sw $t3, -4($s3)
+	sw $t3, 0($s3)
 	
 	li $t6, 0xff0000
-	sw $t6, 0($v0)
+	sw $t6, 0($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -40($v0)
-	sw $t3, -28($v0)
-	sw $t3, -24($v0)
-	sw $t3, -8($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -40($s3)
+	sw $t3, -28($s3)
+	sw $t3, -24($s3)
+	sw $t3, -8($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
-	sw $t3, -24($v0)
-	sw $t3, -20($v0)
-	sw $t3, -12($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
+	sw $t3, -24($s3)
+	sw $t3, -20($s3)
+	sw $t3, -12($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
-	sw $t3, -24($v0)
-	sw $t3, -20($v0)
-	sw $t4, -16($v0)
-	sw $t3, -12($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
+	sw $t3, -24($s3)
+	sw $t3, -20($s3)
+	sw $t4, -16($s3)
+	sw $t3, -12($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t4, -28($v0)
-	sw $t4, -24($v0)
-	sw $t3, -20($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t4, -28($s3)
+	sw $t4, -24($s3)
+	sw $t3, -20($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t5, -44($v0)
-	sw $t3, -40($v0)
-	sw $t5, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t5, -44($s3)
+	sw $t3, -40($s3)
+	sw $t5, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -28($v0)
-
-	jr $ra
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -28($s3)
+	
+	j player_animation
+done:
+	j check_keypress
+	
 
 end:
 	li $v0, 10			# Terminate the program gracefully
