@@ -456,6 +456,8 @@ fall_next:
 # ---------------------+= CHECKING COLLISIONS =+---------------------
 # $a1 = expected movement (>0)
 # $a2 = direction of movement
+# $v0 = 1 or 0, if a collision occurred or not
+# $v1 = actual movement
 collision_check:	
 	li $t0, 1			# Movement step
 	lw $t2, PLAYER_H($s1)		# player_h
@@ -489,28 +491,28 @@ collision_outer:
 collision_inner:
 	mult $t0, $t6
 	mflo $t5
-	beq $a2, UP, collision_inner_y
-	beq $a2, DOWN, collision_inner_y
+	beq $a2, UP, collision_y
+	beq $a2, DOWN, collision_y
 
-collision_inner_x:
+collision_x:
 	# Get position to compare with boundaries
 	add $t3, $t8, $t5
 	sub $t4, $t9, $t1
-	j do_collision_test
+	j collision_test
 	
-collision_inner_y:
+collision_y:
 	# Get position to compare with boundaries
 	sub $t3, $t8, $t1
 	add $t4, $t9, $t5
 
-do_collision_test:
+collision_test:
 	# Check x step w.r.t. boundaries
-	blt $t3, 0, collision
-	bgt $t3, 119, collision
+	blt $t3, 0, collision_true
+	bgt $t3, 119, collision_true
 	
 	# Check y step w.r.t. boundaries
-	blt $t4, 0, collision
-	bgt $t4, 119, collision
+	blt $t4, 0, collision_true
+	bgt $t4, 119, collision_true
 	
 	# Calculate offset
 	sll $t4, $t4, 9			# $t4 = Display With in Pixels*player_y
@@ -520,7 +522,7 @@ do_collision_test:
 	
 	# Check colour on this step
 	lw $t3, 0($t4)
-	beq $t3, WALL_COL, collision
+	beq $t3, WALL_COL, collision_true
 	#li $t3, 0xffc0cb
 	#sw $t3, 0($t4)
 
@@ -532,103 +534,6 @@ do_collision_test:
 	addi $t0, $t0, 1		# Next movement step
 	ble $t0, $a1, collision_outer	# While movement < expected_movement
 
-no_collision:
-	li $v0, 0			# No collision occurred
-	move $v1, $a1			# Actual movement is expected movement
-	jr $ra
-
-collision:
-	li $v0, 1			# A collision occurred
-	subi $t0, $t0, 1
-	move $v1, $t0			# Actual movement
-	jr $ra
-
-
-# Check for collisions while traveling
-# $a0 = current position,	$a1 = expected movement,	$a2 = direction of movement
-# $v0 = 1 if a collision occurred, 0 if there was no collision,	$v1 = actual movement
-collision_idk:
-	# DELETE THIS WHEN THE NEW COLLISION WORKS
-	li $t0, 0			# Movement step
-	
-	# Depending on travel direction...
-	# $t1 = expected x or y movement 			DISPLAY_W*$a1 if up/down,	Unit Width in Pixels*$a1 if left/right
-	# $t4 =	length of one step relative to BASE_ADDRESS 	DISPLAY_W if up/down,		Unit Width in Pixels if left/right
-	# $t6 =	direction of step relative to BASE_ADDRESS 	-1 if left/up,			1 if right/down
-	# $t9 = witdh/height of player to compare
-	# $t8 = corresponding step in width/height
-	
-	sll $t1, $a1, 9
-	li $t4, DISPLAY_W
-	li $t6, -1
-	lw $t9, PLAYER_W($s1)
-	li $t8, 4
-	beq $a2, UP, collision_step	# Done init for up direction
-	
-	li $t6, 1
-	beq $a2, DOWN, collision_step	# Done init for down direction
-
-	sll $t1, $a1, 2
-	li $t4, 4
-	li $t6, -1
-	lw $t9, PLAYER_H($s1)
-	li $t8, DISPLAY_W
-	beq $a2, LEFT, collision_step	# Done init for left direction
-
-	li $t6, 1			# Done init for right direction
-
-collision_step:
-	# Next step from current position
-	add $t2, $t0, $t4
-	mult $t2, $t6
-	mflo $t2
-	add $t2, $a0, $t2
-	
-	move $s6, $t2
-	li $s4, 0
-
-collision_repeat:
-	li $t3, DISPLAY_W
-	beq $a2, UP, collision_y
-	beq $a2, DOWN, collision_y
-
-collision_x:	
-	# Get position to compare with boundaries
-	div $s6, $t3
-	mfhi $t3
-	
-	# Check step w.r.t. boundaries
-	blt $t3, LIM_LOWER, collision_true
-	bgt $t3, LIM_UPPER, collision_true
-	
-	j collision_test
-	
-collision_y:
-	# Get position to compare with boundaries
-	sub $t5, $s6, $s0
-	div $t5, $t3
-	mflo $t3
-	sll $t3, $t3, 2
-	
-	# Check step w.r.t. boundaries
-	blt $t3, LIM_LOWER, collision_true
-	bgt $t3, LIM_UPPER, collision_true
-
-collision_test:
-	# Check colour on this step
-	lw $t3, 0($s6)
-	beq $t3, WALL_COL, collision_true
-	li $t3, 0xffc0cb
-	#sw $t3, 0($s6)
-	
-	sub $s6, $s6, $t8
-	addi $s4, $s4, 1
-	blt $s4, $t9, collision_repeat
-
-	# The step is safe to make
-	add $t0, $t0, $t4
-	blt $t0, $t1, collision_step
-
 collision_false:
 	li $v0, 0			# No collision occurred
 	move $v1, $a1			# Actual movement is expected movement
@@ -636,13 +541,8 @@ collision_false:
 
 collision_true:
 	li $v0, 1			# A collision occurred
-	sra $t5, $t0, 2			# Get movement in terms of x
-	beq $a2, LEFT, collision_move
-	beq $a2, RIGHT, collision_move
-	sra $t5, $t0, 9			# Get movement in terms of y
-
-collision_move:
-	move $v1, $t5			# Actual movement
+	subi $t0, $t0, 1
+	move $v1, $t0			# Actual movement
 	jr $ra
 
 
