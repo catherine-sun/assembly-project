@@ -35,6 +35,7 @@
 #####################################################################
 
 .eqv	BASE_ADDRESS	0x10008000
+.eqv	HEAP_ADDRESS	0x10040000
 .eqv	KEYSTROKE_EVENT	0xffff0000
 
 # Colours:
@@ -50,7 +51,7 @@
 
 # Number of Rectangles (per Map):
 .eqv	BORDER_N	4
-.eqv	MAP1_N		10
+.eqv	AREA1_N		10
 
 # Rectangle info indices:
 # Uses OBJ_X, OBJ_Y, OBJ_W, OBJ_H
@@ -88,7 +89,17 @@
 .eqv	IS_MAX_UP	40
 .eqv	IS_MAX_DOWN	44
 
-.eqv	TIME_RESET	8000
+# Player animation
+.eqv	STACK_BOTTOM	0x10008000
+.eqv	QUEUE_START	0
+.eqv	QUEUE_END	4
+.eqv	QUEUE_BEGIN	8
+.eqv	ERASE		0
+.eqv	PAINT		1
+.eqv	FREEZE_FRAME	-1
+
+.eqv	TIME_RESET	6000
+.eqv	PLAYER_RESET	1000
 
 .data
 # Empty space to prevent game data from being overwritten due to large bitmap size
@@ -97,21 +108,28 @@ padding:	.space	36000
 # Area Maps:		Maps are composed of rectangles. If there are n rectangles, then the array is 4xn
 # 			Every rectangle is saved as (x of top left corner, y of top left corner, width, height)
 border:		.word	0, 0, 128, 8, 0, 120, 128, 8, 120, 8, 8, 112, 0, 8, 8, 112
-map1:		.word	40, 30, 8, 90, 48, 92, 36, 6, 106, 106, 14, 14, 70, 54, 19, 5, 
+area1:		.word	40, 30, 8, 90, 48, 92, 36, 6, 106, 106, 14, 14, 70, 54, 19, 5, 
 			78, 28, 42, 6, 8, 19, 14, 4, 8, 48, 14, 4, 26, 72, 14, 4,
 			8, 93, 14, 4, 26, 116, 14, 4			
 			
 # Moving Platforms:	(x,y) top left corner during highest, leftmost position
-test_platform:	.word 	94, 40, 19, 5, VERT, 35, 0, 2
+#			(x, y, w, h, dir, move_len, move_frame, move_step)
+test_platform:	.word 	94, 40, 19, 5, VERT, 40, 0, 1
 
 time_counter:	.word	TIME_RESET
+player_counter:	.word	PLAYER_RESET
+
+# Queue:		(start address, end address, true beginning)
+queue:		.word	0:3
 
 # Player info:		pos_x	pos_y	player_w	player_h	dir
 player:		.word	63, 	119, 	12,		9,		RIGHT,
 #			movement_speed	jump_height	jump_span
-			1, 		16, 		3,
+			2, 		16, 		3,
 #			is_max_left	is_max_right	is_max_up	is_max_down
 			0,		0,		0,		1
+			
+newline:	.asciiz "\n"
 
 .text
 .globl main
@@ -124,114 +142,99 @@ main:
 	li $a0, 40			# Sleep 40ms
 	syscall
 
-	li $a0, BORDER_N		# Number of rectangles to draw
-	la $a1, border			# Array of rectangles to draw
-	li $a2, WALL_COL		# Colour of rectangles to draw
-	jal draw_map
+	# Paint game border
+	li $a0, BORDER_N		# Number of rectangles to paint
+	la $a1, border			# Array of rectangles to paint
+	li $a2, WALL_COL		# Colour of rectangles to paint
+	jal paint_map
 	
-	li $a0, MAP1_N			# Number of rectangles to draw
-	la $a1, map1			# Array of rectangles to draw
-	jal draw_map
+	# Paint map of Area1
+	li $a0, AREA1_N			# Number of rectangles to paint
+	la $a1, area1			# Array of rectangles to paint
+	jal paint_map
 	
-	li $a0, 1			# Number of rectangles to draw
-	la $a1, test_platform		# Array of rectangles to draw
-	li $a2, 0x6d4886		# Colour of rectangles to draw
-	#jal draw_map
-
-draw_player:
-
-	li $v0, 1
-	la $t0, time_counter
-	lw $a0, 0($t0)
-	syscall
+	# Save queue start (bottom of stack)
+	la $t0, queue
+	sw $sp, QUEUE_START($t0)
+	sw $sp, QUEUE_BEGIN($t0)	
 	
-	jal get_player_pos
-	jal test
+	# Enqueue painting start player
+	li $a0, RIGHT			# Direction to paint
+	li $a1, PAINT			# Type to paint
+	jal get_player_pos		# Position to paint
+	move $a2, $v0
+	jal enqueue_player
 	
+game_running:
+	# When queue_start == queue_end, reclaim space
+	la $t0, queue
+	lw $t1, QUEUE_START($t0)
+	lw $t2, QUEUE_END($t0)
+	bne $t1, $t2, game_main
+	
+	# But not when the queue is already emptied
+	lw $t3, QUEUE_BEGIN($t0)
+	bne $t1, $t3, reclaim_space
+	
+game_main:
+	# Gravity: let player fall if it can still move down
 	lw $t3, IS_MAX_DOWN($s1)
-	beqz $t3, fall_player		# Let player fall if it can still move down
-
-draw_moving_platforms:
-
-	# Erase
-	li $a0, 1			# Number of rectangles to draw
-	la $a1, test_platform		# Array of rectangles to draw
-	li $a2, BG_COL			# Colour of rectangles to draw
-	jal draw_map
+	beqz $t3, fall_player
 	
-	la $t0, test_platform
-	lw $t1, MOVE_LEN($t0)
-	lw $t2, MOVE_FRAME($t0)		# Get current frame
-	lw $t3, OBJ_DIR($t0)
-	lw $t4, MOVE_STEP($t0)
-	
-	bge $t2, $t1, swap_dir
-	bltz $t2, swap_dir
-	j increment_plat
-swap_dir:
-	li $t5, -1
-	mult $t4, $t5
-	mflo $t4
-	sw $t4, MOVE_STEP($t0)
-	
-increment_plat:
-	add $t2, $t2, $t4
-	sw $t2, MOVE_FRAME($t0)
-
-idunno:
-	bne $t3, HORZ, vertical_movement
-	lw $t8, OBJ_X($t0)
-	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
-	sw $t8, OBJ_X($t0)
-	j draw_platform
-	
-vertical_movement:
-	lw $t8, OBJ_Y($t0)
-	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
-	sw $t8, OBJ_Y($t0)
-	
-draw_platform:
-	li $a0, 1			# Number of rectangles to draw
-	la $a1, test_platform		# Array of rectangles to draw
-	li $a2, 0x6d4886		# Colour of rectangles to draw
-	jal draw_map
-	
-	li $v0, 32
-	li $a0, 40			# Sleep 40ms
-	syscall
-
-game_running:	
+	# Decrement game time counter
 	la $t0, time_counter
 	lw $t1, 0($t0)
 	subi $t1, $t1, 1
 	sw $t1, 0($t0) 
-	bnez $t1, check_keypress
+	bnez $t1, player_main
+	
+	# Reset game time counter
 	li $t1, TIME_RESET
+	sw $t1, 0($t0)
+	
+	# Paint one frame of game
+	jal game_animation
+	
+player_main:
+	# Decrement player time counter
+	la $t0, player_counter
+	lw $t1, 0($t0)
+	subi $t1, $t1, 1
 	sw $t1, 0($t0) 
-	j draw_moving_platforms
-
-check_keypress:	
+	bnez $t1, check_keypress
+	
+	# Reset player time counter
+	li $t1, PLAYER_RESET
+	sw $t1, 0($t0)
+	
+	# Paint one frame of player if queue not empty
+	la $t0, queue
+	lw $t1, QUEUE_START($t0)
+	lw $t2, QUEUE_END($t0)
+	beq $t1, $t2, check_keypress
+	j player_animation
+	
+check_keypress:
 	lw $s6, 0($s7)
 	bne $s6, 1, game_running
 	lw $s6, 4($s7)
 	
 	beq $s6, 0x62, end		# Hit 'b' to end program
 	beq $s6, 0x20, jump_player	# ASCII code of ' ' is 0x20
-	beq $s6, 0x61, move_player	# ASCII code of 'a' is 0x61
-	beq $s6, 0x64, move_player 	# ACSII code of 'd' is 0x64
+	beq $s6, 0x61, move_left	# ASCII code of 'a' is 0x61
+	beq $s6, 0x64, move_right 	# ACSII code of 'd' is 0x64
 	
 	li $s6, 0
 	li $v0, 32
 	li $a0, 40			# Sleep 40ms
 	syscall
-	
 	j game_running
 
 
 # -----------------------+= PLAYER MOVEMENT =+-----------------------
 # Move player in the direction of the key event, by the number of units
 # specified by its movement_speed. Update the direcion the player is facing
-move_player:
+move_left:
 	lw $t7, MOVEMENT_SPEED($s1)
 	
 	# Save current position
@@ -239,15 +242,13 @@ move_player:
 	move $s4, $v0
 	
 	# Reset collision tracking
-	sw $zero, IS_MAX_LEFT($s1)
 	sw $zero, IS_MAX_RIGHT($s1)
 	sw $zero, IS_MAX_UP($s1)
-	sw $zero, IS_MAX_DOWN($s1)
-
-move_left:
-	# If the player is not moving left, it must be moving right
-	bne $s6, 0x61, move_right
 	
+	# Check if the player can move more left
+	lw $t3, IS_MAX_LEFT($s1)
+	bnez $t3, game_main
+
 	# Check row-wise collision
 	move $a0, $s4			# Current position
 	move $a1, $t7			# Expected x movement
@@ -259,16 +260,46 @@ move_left:
 	sw $t8, POS_X($s1)		# Update player_x
 	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
 
-	# Erase current player position
-	move $v0, $s4
-	jal erase
+	# Enqueue erasing old player
+	lw $a0, DIR($s1)		# Direction to paint
+	li $a1, ERASE			# Type to paint
+	move $a2, $s4			# Position to paint
+	jal enqueue_player
+	
+	# Enqueue painting new player
+	li $a0, LEFT			# Direction to paint
+	li $a1, PAINT			# Type to paint
+	jal get_player_pos		# Position to paint
+	move $a2, $v0
+	jal enqueue_player
 	
 	# Player is now facing left
 	li $t3, LEFT
 	sw $t3, DIR($s1)
-	j draw_player
+	
+	# Check for fall
+	move $a0, $v0			# Current position
+	li $a1, 1			# Expected x movement
+	li $a2, DOWN			# Direction of movement
+	jal collision_check
+	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
+	j game_running
 
 move_right:
+	lw $t7, MOVEMENT_SPEED($s1)
+	
+	# Save current position
+	jal get_player_pos
+	move $s4, $v0
+	
+	# Reset collision tracking
+	sw $zero, IS_MAX_LEFT($s1)
+	sw $zero, IS_MAX_UP($s1)
+	
+	# Check if the player can move more right
+	lw $t3, IS_MAX_RIGHT($s1)
+	bnez $t3, game_main
+	
 	# Check row-wise collision
 	move $a0, $v0			# Current position
 	move $a1, $t7			# Expected x movement
@@ -280,14 +311,30 @@ move_right:
 	sw $t8, POS_X($s1)		# Update player_x
 	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
 	
-	# Erase current player position
-	move $v0, $s4
-	jal erase
+	# Enqueue erasing old player
+	lw $a0, DIR($s1)		# Direction to paint
+	li $a1, ERASE			# Type to paint
+	move $a2, $s4			# Position to paint
+	jal enqueue_player
+	
+	# Enqueue painting new player
+	li $a0, RIGHT			# Direction to paint
+	li $a1, PAINT			# Type to paint
+	jal get_player_pos		# Position to paint
+	move $a2, $v0
+	jal enqueue_player
 	
 	# Player is now facing right
 	li $t3, RIGHT
 	sw $t3, DIR($s1)
-	j draw_player
+	
+	# Check for fall
+	move $a0, $v0			# Current position
+	li $a1, 1			# Expected x movement
+	li $a2, DOWN			# Direction of movement
+	jal collision_check
+	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
+	j game_running
 
 
 # -----------------------+= PLAYER JUMPING =+------------------------
@@ -360,20 +407,31 @@ jump_y:
 	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
 
 	# Erase current player position
-	move $v0, $s4
-	jal erase
+	#move $v0, $s4
+	#jal erase
 	
 	# Draw new player position
-	jal get_player_pos
-	jal test
-
-jump_next:
-	li $v0, 32
-	li $a0, 40			# Sleep 40ms
-	syscall
+	#jal get_player_pos
+	#jal test
 	
+	# Enqueue erasing old player
+	lw $a0, DIR($s1)		# Direction to paint
+	li $a1, ERASE			# Type to paint
+	move $a2, $s4			# Position to paint
+	jal enqueue_player
+	
+	# Enqueue painting new player
+	lw $a0, DIR($s1)		# Direction to paint
+	li $a1, PAINT			# Type to paint
+	jal get_player_pos		# Position to paint
+	move $a2, $v0
+	jal enqueue_player
+	
+	jal enqueue_freeze_frame
+
+jump_next:	
 	sra $s6, $s6, 1			# Next jump height (divide by 2)
-	beqz $s6, draw_player
+	beqz $s6, game_running
 	j jump_up
 
 
@@ -451,20 +509,31 @@ fall_y:
 	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
 
 	# Erase current player position
-	move $v0, $s4
-	jal erase
+	#move $v0, $s4
+	#jal erase
 	
 	# Draw new player position
-	jal get_player_pos
-	jal test
+	#jal get_player_pos
+	#jal test
+	
+	# Enqueue erasing old player
+	lw $a0, DIR($s1)		# Direction to paint
+	li $a1, ERASE			# Type to paint
+	move $a2, $s4			# Position to paint
+	jal enqueue_player
+	
+	# Enqueue painting new player
+	lw $a0, DIR($s1)		# Direction to paint
+	li $a1, PAINT			# Type to paint
+	jal get_player_pos		# Position to paint
+	move $a2, $v0
+	jal enqueue_player
+
+	jal enqueue_freeze_frame
 
 fall_next:	
-	li $v0, 32
-	li $a0, 40			# Sleep 40ms
-	syscall
-	
 	sll $s6, $s6, 1			# Next falling height (multiply by 2)
-	beqz $s6, draw_player
+	beqz $s6, game_running
 	j fall_down
 
 
@@ -538,6 +607,7 @@ collision_test:
 	# Check colour on this step
 	lw $t3, 0($t4)
 	beq $t3, WALL_COL, collision_true
+	beq $t3, 0x6d4886, collision_true
 
 	# This square is safe
 	addi $t1, $t1, 1		# Next collision square
@@ -569,16 +639,61 @@ get_player_pos:
 	add $t8, $t8, $t9		# offset = $t8 + $t9
 	add $v0, $s0, $t8		# $v0 = base + offset
 	jr $ra
+
+# Add a player frame to the end of the queue (top of the stack)
+# $a0 = direction to draw
+# $a1 = type to draw
+# $a2 = position to draw
+enqueue_player:	
+	# Enqueue the player frame
+	addi $sp, $sp, -12		# Make space in stack
+	sw $a0, 8($sp)			# Direction to paint
+	sw $a1, 4($sp)			# Type to paint
+	sw $a2, 0($sp)			# Position to paint
 	
-# Draw the map of area provided by...
-# $a0 = number of rectangles to draw
-# $a1 = array of rectangles to draw
-# $a2 = colour of rectangles to draw
-draw_map:
+	# Update queue_end
+	la $t0, queue
+	sw $sp, QUEUE_END($t0)
+
+	jr $ra
+	
+	
+enqueue_freeze_frame:	
+	# Enqueue a freeze frame
+	addi $sp, $sp, -8
+	li $t0, FREEZE_FRAME
+	sw $t0, 0($sp)
+	sw $t0, 4($sp)
+	
+	# Update queue_end
+	la $t0, queue
+	sw $sp, QUEUE_END($t0)
+	
+	jr $ra
+
+reclaim_space:
+	la $t0, queue
+	lw $t1, QUEUE_BEGIN($t0)
+
+reclaim_word:
+	addi $sp, $sp, 4
+	bne $sp, $t1, reclaim_word
+	
+	sw $t1, QUEUE_START($t0)
+	sw $t1, QUEUE_END($t0)
+	j game_main
+	
+# -----------------------+= PAINT FUNCTIONS =+-----------------------
+	
+# Paint the map of area provided by...
+# $a0 = number of rectangles to paint
+# $a1 = array of rectangles to paint
+# $a2 = colour of rectangles to paint
+paint_map:
 	sll $t0, $a0, 4
 	li $t1, 0
 	
-draw_rectangle:
+paint_rectangle:
 	add $t4, $a1, $t1		# Address of current rectangle
 	lw $t6, OBJ_X($t4)		# rectangle_x
 	lw $t7, OBJ_Y($t4)		# rectangle_y
@@ -601,174 +716,259 @@ draw_rectangle:
 	# Count number of coloured rows
 	li $t5, 0
 
-colour_row:
+paint_row:
 	sw $a2, 0($t4)			# Colour pixel
 	addi $t4, $t4, 4		# Next pixel in row
-	blt $t4, $t8, colour_row	# Continue colouring until x limit is reached
+	blt $t4, $t8, paint_row		# Continue colouring until x limit is reached
 	
 	move $t4, $t6 			# Reset x position
 	addi $t4, $t4, DISPLAY_W	# Jump to next row
 	addi $t8, $t8, DISPLAY_W	# Jump to next row
 	move $t6, $t4			# Save x position
 	addi $t5, $t5, 1		# Increment counter
-	blt $t5, $t9, colour_row	# Continue if $t5 < rectangle_height
+	blt $t5, $t9, paint_row		# Continue if $t5 < rectangle_height
 
 	#li $v0, 32
 	#li $a0, 40			# Sleep 40ms
 	#syscall
 	
 	addi $t1, $t1, RECT_ARR_W	# Get next possible rectangle (increment by width of rectangle array)
-	blt $t1, $t0, draw_rectangle	# Check if there are still rectangles to draw
+	blt $t1, $t0, paint_rectangle	# Check if there are still rectangles to paint
 	jr $ra
 
-erase:
-	#jr $ra
-	li $t3, BG_COL
-	li $t4, BG_COL
-	li $t5, BG_COL
-	j test_draw
+# Dequeue one frame
+player_animation:
+	la $t0, queue
+	lw $t1, QUEUE_START($t0)
+	
+	lw $s5, -4($t1)			# Direction to paint
+	addi $t1, $t1, -4		# "reclaim" space
+	sw $t1, QUEUE_START($t0)
+	
+	# Check for freeze frame
+	beq $s5, FREEZE_FRAME, game_running
 
-test:
-	#jr $ra
+	lw $s4, -4($t1)			# Type to paint
+	lw $s3, -8($t1)			# Position to paint
+	
+	addi $t1, $t1, -8		# "reclaim" space
+	sw $t1, QUEUE_START($t0)
+	
+	beq $s4, ERASE, erase
+
+colour:
 	li $t3, 0xadd07d
 	li $t4, 0x5bbe74
 	li $t5, 0x332935
+	j test_draw
+
+erase:
+	li $t3, BG_COL
+	li $t4, BG_COL
+	li $t5, BG_COL
 
 test_draw:
-	lw $t6, DIR($s1)
-	beq $t6, LEFT, flipped
-	sw $t3, 0($v0)
-	sw $t3, -20($v0)
-	sw $t3, -40($v0)
-	sw $t3, -44($v0)
+	beq $s5, LEFT, flipped
+	sw $t3, 0($s3)
+	sw $t3, -20($s3)
+	sw $t3, -40($s3)
+	sw $t3, -44($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -20($v0)
-	sw $t3, -24($v0)
-	sw $t3, -36($v0)
+	li $t6, 0xff0000
+	sw $t6, 0($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
-	sw $t3, -20($v0)
-	sw $t3, -24($v0)
-	sw $t3, -32($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -4($s3)
+	sw $t3, -20($s3)
+	sw $t3, -24($s3)
+	sw $t3, -36($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
-	sw $t3, -20($v0)
-	sw $t3, -24($v0)
-	sw $t4, -28($v0)
-	sw $t3, -32($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
+	sw $t3, -20($s3)
+	sw $t3, -24($s3)
+	sw $t3, -32($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t4, -16($v0)
-	sw $t4, -20($v0)
-	sw $t3, -24($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
+	sw $t3, -20($s3)
+	sw $t3, -24($s3)
+	sw $t4, -28($s3)
+	sw $t3, -32($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t4, -16($s3)
+	sw $t4, -20($s3)
+	sw $t3, -24($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t5, 0($v0)
-	sw $t3, -4($v0)
-	sw $t5, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t5, 0($s3)
+	sw $t3, -4($s3)
+	sw $t5, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -4($s3)
+	sw $t3, -8($s3)
+	sw $t3, -12($s3)
+	sw $t3, -16($s3)
 	
-	jr $ra
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, 0($s3)
+	sw $t3, -16($s3)
+	
+	beq $s4, ERASE, player_animation
+	j game_running
 	
 flipped:
-	sw $t3, -44($v0)
-	sw $t3, -28($v0)
-	sw $t3, -4($v0)
-	sw $t3, 0($v0)
+	sw $t3, -44($s3)
+	sw $t3, -28($s3)
+	sw $t3, -4($s3)
+	sw $t3, 0($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -40($v0)
-	sw $t3, -28($v0)
-	sw $t3, -24($v0)
-	sw $t3, -8($v0)
+	li $t6, 0xff0000
+	sw $t6, 0($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
-	sw $t3, -24($v0)
-	sw $t3, -20($v0)
-	sw $t3, -12($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -40($s3)
+	sw $t3, -28($s3)
+	sw $t3, -24($s3)
+	sw $t3, -8($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
-	sw $t3, -24($v0)
-	sw $t3, -20($v0)
-	sw $t4, -16($v0)
-	sw $t3, -12($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
+	sw $t3, -24($s3)
+	sw $t3, -20($s3)
+	sw $t3, -12($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t4, -28($v0)
-	sw $t4, -24($v0)
-	sw $t3, -20($v0)
-	sw $t3, -16($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
+	sw $t3, -24($s3)
+	sw $t3, -20($s3)
+	sw $t4, -16($s3)
+	sw $t3, -12($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t4, -28($s3)
+	sw $t4, -24($s3)
+	sw $t3, -20($s3)
+	sw $t3, -16($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t5, -44($v0)
-	sw $t3, -40($v0)
-	sw $t5, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -40($v0)
-	sw $t3, -36($v0)
-	sw $t3, -32($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t5, -44($s3)
+	sw $t3, -40($s3)
+	sw $t5, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
 	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -44($v0)
-	sw $t3, -28($v0)
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -40($s3)
+	sw $t3, -36($s3)
+	sw $t3, -32($s3)
+	sw $t3, -28($s3)
 	
+	subi $s3, $s3, DISPLAY_W
+	sw $t3, -44($s3)
+	sw $t3, -28($s3)
+	
+	beq $s4, ERASE, player_animation
+	j game_running
+	
+
+game_animation:
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	# Erase
+	li $a0, 1			# Number of rectangles to draw
+	la $a1, test_platform		# Array of rectangles to draw
+	li $a2, BG_COL			# Colour of rectangles to draw
+	jal paint_map
+	
+	la $t0, test_platform
+	lw $t1, MOVE_LEN($t0)
+	lw $t2, MOVE_FRAME($t0)		# Get current frame
+	lw $t3, OBJ_DIR($t0)
+	lw $t4, MOVE_STEP($t0)
+	
+	bge $t2, $t1, swap_dir
+	bltz $t2, swap_dir
+	j increment_plat
+
+swap_dir:
+	sub $t4, $zero, $t4
+	sw $t4, MOVE_STEP($t0)
+	
+increment_plat:
+	add $t2, $t2, $t4
+	sw $t2, MOVE_FRAME($t0)
+
+	bne $t3, HORZ, vertical_movement
+	lw $t8, OBJ_X($t0)
+	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
+	sw $t8, OBJ_X($t0)
+	j draw_platform
+	
+vertical_movement:
+	lw $t8, OBJ_Y($t0)
+	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
+	sw $t8, OBJ_Y($t0)
+	
+draw_platform:
+	li $a0, 1			# Number of rectangles to draw
+	la $a1, test_platform		# Array of rectangles to draw
+	li $a2, 0x6d4886		# Colour of rectangles to draw
+	jal paint_map
+	
+	li $v0, 32
+	li $a0, 40			# Sleep 40ms
+	syscall
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
 	jr $ra
+
+error_checking:
+	# If 9999 ever prints there's something wrong
+	li $v0, 1
+	li $a0, 9999
+	syscall
 
 end:
 	li $v0, 10			# Terminate the program gracefully
