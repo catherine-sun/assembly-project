@@ -48,12 +48,14 @@
 
 # Boundaries:
 .eqv	DISPLAY_W	512
-.eqv	LIM_LOWER	32
-.eqv	LIM_UPPER	476
+.eqv	LOWER_XLIM	0
+.eqv	UPPER_XLIM	119
+.eqv	LOWER_YLIM	0
+.eqv	UPPER_YLIM	109
 
 # Number of Rectangles (per Map):
 .eqv	BORDER_N	4
-.eqv	AREA1_N		10
+.eqv	AREA1_N		9
 .eqv	AREA1_MP	3
 
 # Rectangle type:
@@ -93,74 +95,109 @@
 .eqv	IS_MAX_UP	44
 .eqv	IS_MAX_DOWN	48
 
+# Player initiation
+.eqv	START_X		63
+.eqv	START_Y		109
+.eqv	START_SPEED	1
+.eqv	START_JHEIGHT	16
+.eqv	START_JSPAN	3
+.eqv	TRUE		1
+.eqv	FALSE		0
+
 .eqv	TIME_RESET	2000
 
 .data
 padding:	.space	36000
 time_counter:	.word	TIME_RESET
+newline:	.asciiz	"\n"
 
-# Area Maps:		Maps are composed of rectangles. If there are n rectangles, then the array is 4xn
-# 			Every rectangle is saved as (x of top left corner, y of top left corner, width, height)
-border:		.word	0, 0, 128, 8, 0, 120, 128, 8, 120, 8, 8, 112, 0, 8, 8, 112
-area1:		.word	40, 30, 6, 90, 46, 92, 36, 6, 106, 106, 14, 14, 70, 54, 19, 5, 
-			78, 28, 42, 6, 8, 19, 14, 4, 8, 48, 14, 4, 26, 72, 14, 4,
-			8, 93, 14, 4, 26, 116, 14, 4
+
+# Player info:		player_x	player_y	player_w	 player_h	player_dir
+player:		.word	START_X,	START_Y, 	12,		9,		RIGHT,
+#			movement_speed	jump_height	jump_span	on_plat		is_max_left
+			START_SPEED,	START_JHEIGHT,	START_JSPAN,	FALSE,		FALSE,
+#			is_max_right	is_max_up	is_max_down
+			FALSE,		FALSE,		TRUE
+
+
+# Area Maps:		(x of top left corner, y of top left corner, width, height) per rectangle
+border:		.word	0, 0, 128, 8,
+			0, 110, 128, 18,
+			120, 8, 8, 102,
+			0, 8, 8, 102
 			
-# Moving Platforms:	(x,y) top left corner during highest, leftmost position
-#			(x, y, w, h, dir, total movement, current frame, movement speed)
-area1_mobplats:	.word 	23, 14, 3, 12, VERT, 35, 0, 2,
-			94, 50, 19, 4, VERT, 35, 0, 1, 
-			48, 18, 19, 4, VERT, 28, 0, 1
+bg:		.word	8, 8, 112, 102
 
-# Player info:		player_x	player_y	player_w	player_h	player_dir
-player:		.word	63, 		119, 		12,		9,		RIGHT,
-#			movement_speed	jump_height	jump_span	on_plat
-			1, 		16, 		3,		0,
-#			is_max_left	is_max_right	is_max_up	is_max_down
-			0,		0,		0,		1
+area1:		.word	40, 30, 6, 80,
+			46, 84, 36, 6,
+			106, 96, 14, 14,
+			70, 54, 19, 5,
+			78, 28, 42, 6,
+			8, 19, 14, 4,
+			8, 48, 14, 4,
+			26, 72, 14, 4,
+			8, 106, 14, 4
+
+			
+# Moving Platforms:	(x, y, w, h, dir, total movement, current frame, movement speed) per platform
+#			(x,y) top left corner during highest, leftmost position
+area1_plats:	.word 	23, 14, 3, 12, VERT, 35, 0, 2,
+			52, 18, 12, 5, VERT, 28, 0, 1,
+			94, 50, 19, 4, VERT, 24, 0, 1
+
+
 .text
 .globl main
 main:
-	li $s0, BASE_ADDRESS 		# $s0 stores the base address for display
-	la $s1, player			# $s1 stores the player info
-
 	li $v0, 32
 	li $a0, SLEEP
 	syscall
 
 	# Paint game border
-	li $a0, BORDER_N		# Number of rectangles to paint
-	la $a1, border			# Array of rectangles to paint
-	li $a2, WALL_COL		# Colour of rectangles to paint
-	li $a3, SESSILE			# Type of rectanlges to paint
+	li $a0, BORDER_N
+	la $a1, border
+	li $a2, WALL_COL
+	li $a3, SESSILE
 	jal paint_map
 	
-	li $a0, AREA1_N			# Number of rectangles to paint
-	la $a1, area1			# Array of rectangles to paint
+	# Paint game area1
+	li $a0, 1
+	la $a1, bg
+	li $a2, BG_COL
+	jal paint_map
+	
+	li $a0, AREA1_N
+	la $a1, area1
+	li $a2, WALL_COL
 	jal paint_map
 
-game_running:	
+game_running:
+	# Decrement game time counter by 1
 	la $t0, time_counter
 	lw $t1, 0($t0)
 	subi $t1, $t1, 1
 	sw $t1, 0($t0) 
 	bnez $t1, check_keypress
+	
+	# Reset game time counter
 	li $t1, TIME_RESET
-	sw $t1, 0($t0) 
+	sw $t1, 0($t0)
+	
+	# Paint one frame
 	j paint_game
 
 check_keypress:	
 	li $t0, KEYSTROKE_EVENT
-	lw $s6, 0($t0)
-	bne $s6, 1, game_running
-	lw $s6, 4($t0)
+	lw $t1, 0($t0)
+	bne $t1, 1, game_running
+	lw $t1, 4($t0)
 	
-	beq $s6, 0x62, end		# Hit 'b' to end program
-	beq $s6, 0x20, jump_player	# ASCII code of ' ' is 0x20
-	beq $s6, 0x61, move_left	# ASCII code of 'a' is 0x61
-	beq $s6, 0x64, move_right 	# ACSII code of 'd' is 0x64
+	beq $t1, 0x70, game_reset	# Hit 'p' to restart
+	beq $t1, 0x20, jump_player	# ASCII code of ' ' is 0x20
+	beq $t1, 0x61, move_left	# ASCII code of 'a' is 0x61
+	beq $t1, 0x64, move_right 	# ACSII code of 'd' is 0x64
 	
-	li $s6, 0
+	li $t1, 0
 	li $v0, 32
 	li $a0, SLEEP
 	syscall
@@ -171,66 +208,76 @@ check_keypress:
 # -----------------------+= PLAYER MOVEMENT =+-----------------------
 # Move player left by the number of units specified by the player's movement_speed.
 move_left:
-	lw $t7, MOVEMENT_SPEED($s1)
-	
-	# Save current position
+	# Push current position onto stack
 	jal get_player_pos
-	move $s4, $v0
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
 	
 	# Reset collision tracking
-	sw $zero, IS_MAX_RIGHT($s1)
-	sw $zero, IS_MAX_UP($s1)
-	sw $zero, IS_MAX_DOWN($s1)
+	la $t0, player
+	sw $zero, IS_MAX_RIGHT($t0)
+	sw $zero, IS_MAX_UP($t0)
+	sw $zero, IS_MAX_DOWN($t0)
+	sw $zero, ON_PLAT($t0)
 	
 	# Check row-wise collision
-	move $a0, $t7			# Expected x movement
+	lw $a0, MOVEMENT_SPEED($t0)	# Expected x movement
 	li $a1, LEFT			# Direction of movement
 	jal collision_check
 
-	lw $t8, PLAYER_X($s1)
-	sub $t8, $t8, $v1		# player_x - actual x movement
-	sw $t8, PLAYER_X($s1)		# Update player_x
-	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	sub $t1, $t1, $v1		# player_x - actual x movement
+	sw $t1, PLAYER_X($t0)		# Update player_x
+	sw $v0, IS_MAX_LEFT($t0)	# Update player is_max_left
 
-	# Erase current player position
-	move $v0, $s4
+	# Pop and erase current player position
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
 	jal erase_cat
 	
 	# Player is now facing left
-	li $t3, LEFT
-	sw $t3, PLAYER_DIR($s1)
+	la $t0, player
+	li $t1, LEFT
+	sw $t1, PLAYER_DIR($t0)
+	
 	j paint_game
 
 # Move player right by the number of units specified by the player's movement_speed.
 move_right:
-	lw $t7, MOVEMENT_SPEED($s1)
-	
-	# Save current position
+	# Push current position onto stack
 	jal get_player_pos
-	move $s4, $v0
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
 	
 	# Reset collision tracking
-	sw $zero, IS_MAX_RIGHT($s1)
-	sw $zero, IS_MAX_UP($s1)
-	sw $zero, IS_MAX_DOWN($s1)
+	la $t0, player
+	sw $zero, IS_MAX_LEFT($t0)
+	sw $zero, IS_MAX_UP($t0)
+	sw $zero, IS_MAX_DOWN($t0)
+	sw $zero, ON_PLAT($t0)
 	
 	# Check row-wise collision
-	move $a0, $t7			# Expected x movement
+	lw $a0, MOVEMENT_SPEED($t0)	# Expected x movement
 	li $a1, RIGHT			# Direction of movement
 	jal collision_check
-
-	lw $t8, PLAYER_X($s1)
-	add $t8, $t8, $v1		# player_x + actual x movement
-	sw $t8, PLAYER_X($s1)		# Update player_x
+	
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	add $t1, $t1, $v1		# player_x + actual x movement
+	sw $t1, PLAYER_X($t0)		# Update player_x
 	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
 	
-	# Erase current player position
-	move $v0, $s4
+	# Pop and erase current player position
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
 	jal erase_cat
 	
 	# Player is now facing right
-	li $t3, RIGHT
-	sw $t3, PLAYER_DIR($s1)
+	la $t0, player
+	li $t1, RIGHT
+	sw $t1, PLAYER_DIR($t0)
+	
 	j paint_game
 
 
@@ -238,70 +285,78 @@ move_right:
 # Jump player in the direction it is facing, in a parabolic jump whose
 # height peaks at the number of units specified by its jump_height.
 # Precondition:	jump_height is a positive power of 2
-jump_player:
-	lw $s5, PLAYER_DIR($s1)
-	lw $t1, JUMP_HEIGHT($s1)
-	lw $t7, JUMP_SPAN($s1)
-	
-	# Player is no longer on ground
-	sw $zero, IS_MAX_DOWN($s1)
+jump_player:	
+	# Player is no longer on ground/platform
+	la $t0, player
+	sw $zero, IS_MAX_DOWN($t0)
+	sw $zero, ON_PLAT($t0)
 
 	# Initial jump step has height jump_height/2
-	sra $s6, $t1, 1
+	lw $t1, JUMP_HEIGHT($t0)
+	sra $s0, $t1, 1
 
 jump_up:
 	# Check if player cannot jump more up
-	lw $t3, IS_MAX_UP($s1)
-	bnez $t3, fall_player
+	la $t0, player
+	lw $t0, IS_MAX_UP($t0)
+	bnez $t0, fall_player
 	
-	# Save current position
+	# Push current position onto stack
 	jal get_player_pos
-	move $s4, $v0
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
 
 jump_left:
 	# If the player is not jumping left, check right
-	bne $s5, LEFT, jump_right	
+	la $t0, player
+	lw $t1, PLAYER_DIR($t0)
+	bne $t1, LEFT, jump_right	
 
 	# Check row-wise collision
-	move $a0, $t7			# Expected x movement
-	li $a1, LEFT			# Direction of movement
+	lw $a0, JUMP_SPAN($t0)
+	li $a1, LEFT
 	jal collision_check
 
-	lw $t8, PLAYER_X($s1)
-	sub $t8, $t8, $v1		# player_x - actual x movement
-	sw $t8, PLAYER_X($s1)		# Update player_x
-	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	sub $t1, $t1, $v1		# player_x - actual x movement
+	sw $t1, PLAYER_X($t0)		# Update player_x
+	sw $v0, IS_MAX_LEFT($t0)	# Update player is_max_left
 	
 	j jump_y
 
 jump_right:
 	# If the player is not jumping left or right, jump upwards
-	bne $s5, RIGHT, jump_y
+	la $t0, player
+	lw $t1, PLAYER_DIR($t0)
+	bne $t1, RIGHT, jump_y
 	
 	# Check row-wise collision
-	move $a0, $t7			# Expected x movement
-	li $a1, RIGHT			# Direction of movement
+	lw $a0, JUMP_SPAN($t0)
+	li $a1, RIGHT
 	jal collision_check
 
-	lw $t8, PLAYER_X($s1)
-	add $t8, $t8, $v1		# player_x + actual x movement
-	sw $t8, PLAYER_X($s1)		# Update player_x
-	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	add $t1, $t1, $v1		# player_x + actual x movement
+	sw $t1, PLAYER_X($t0)		# Update player_x
+	sw $v0, IS_MAX_RIGHT($t0)	# Update player is_max_right
 
 jump_y:	
 	# Check col-wise collision
-	jal get_player_pos
-	move $a0, $s6			# Expected y movement
+	move $a0, $s0			# Expected y movement
 	li $a1, UP			# Direction of movement
 	jal collision_check
 
-	lw $t9, PLAYER_Y($s1)
-	sub $t9, $t9, $v1		# player_y - actual y movement
-	sw $t9, PLAYER_Y($s1)		# Update player_y
-	sw $v0, IS_MAX_UP($s1)		# Update player is_max_up
+	la $t0, player
+	lw $t1, PLAYER_Y($t0)
+	sub $t1, $t1, $v1		# player_y - actual y movement
+	sw $t1, PLAYER_Y($t0)		# Update player_y
+	sw $v0, IS_MAX_UP($t0)		# Update player is_max_up
 
-	# Erase old player position
-	move $v0, $s4
+	# Pop and erase current player position
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
 	jal erase_cat
 	
 	# Paint new player position
@@ -313,8 +368,8 @@ jump_next:
 	li $a0, SLEEP
 	syscall
 	
-	sra $s6, $s6, 1			# Next jump height (divide by 2)
-	bnez $s6, jump_up
+	sra $s0, $s0, 1			# Next jump height (divide by 2)
+	bnez $s0, jump_up
 	
 	j paint_game
 
@@ -322,75 +377,83 @@ jump_next:
 # -----------------------+= PLAYER FALLING =+------------------------
 # Fall player until they collide with the ground or a platform
 fall_player:
-	lw $s5, PLAYER_DIR($s1)
-	lw $t7, JUMP_SPAN($s1)
-	
 	# Player is no longer hitting ceiling
-	sw $zero, IS_MAX_UP($s1)
+	la $t0, player
+	sw $zero, IS_MAX_UP($t0)
 	
 	# Initial fall step has height 2
-	li $s6, 2
+	li $s0, 2
 
 fall_down:
 	# Check if player cannot fall more down
-	lw $t3, IS_MAX_DOWN($s1)
-	bnez $t3, game_running
+	la $t0, player
+	lw $t0, IS_MAX_DOWN($t0)
+	bnez $t0, game_running
 	
-	# Save current position
+	# Push current position onto stack
 	jal get_player_pos
-	move $s4, $v0
+	addi $sp, $sp, -4
+	sw $v0, 0($sp)
 
 fall_left:
 	# If the player is not falling left, check right
-	bne $s5, LEFT, fall_right
+	la $t0, player
+	lw $t1, PLAYER_DIR($t0)
+	bne $t1, LEFT, fall_right
 	
 	# Check if player cannot fall more left
-	lw $t3, IS_MAX_LEFT($s1)
-	bnez $t3, fall_y
+	lw $t1, IS_MAX_LEFT($t0)
+	bnez $t1, fall_y
 
 	# Check row-wise collision
-	move $a0,, $t7			# Expected x movement
-	li $a1, LEFT			# Direction of movement
+	lw $a0, JUMP_SPAN($t0)
+	li $a1, LEFT
 	jal collision_check
 
-	lw $t8, PLAYER_X($s1)
-	sub $t8, $t8, $v1		# player_x - actual x movement
-	sw $t8, PLAYER_X($s1)		# Update player_x
-	sw $v0, IS_MAX_LEFT($s1)	# Update player is_max_left
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	sub $t1, $t1, $v1		# player_x - actual x movement
+	sw $t1, PLAYER_X($t0)		# Update player_x
+	sw $v0, IS_MAX_LEFT($t0)	# Update player is_max_left
+	
 	j fall_y
 
 fall_right:
 	# If the player is not falling left or right, fall downwards
-	bne $s5, RIGHT, fall_y
+	la $t0, player
+	lw $t1, PLAYER_DIR($t0)
+	bne $t1, RIGHT, fall_y
 	
 	# Check if player cannot fall more right
-	lw $t3, IS_MAX_RIGHT($s1)
-	bnez $t3, fall_y
+	lw $t1, IS_MAX_RIGHT($t0)
+	bnez $t1, fall_y
 	
 	# Check row-wise collision
-	move $a0, $t7			# Expected x movement
-	li $a1, RIGHT			# Direction of movement
+	lw $a0, JUMP_SPAN($t0)
+	li $a1, RIGHT
 	jal collision_check
 
-	lw $t8, PLAYER_X($s1)
-	add $t8, $t8, $v1		# player_x + actual x movement
-	sw $t8, PLAYER_X($s1)		# Update player_x
-	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	add $t1, $t1, $v1		# player_x + actual x movement
+	sw $t1, PLAYER_X($t0)		# Update player_x
+	sw $v0, IS_MAX_RIGHT($t0)	# Update player is_max_right
 
 fall_y:	
 	# Check col-wise collision
-	jal get_player_pos
-	move $a0, $s6			# Expected y movement
-	li $a1, DOWN			# Direction of movement
+	move $a0, $s0
+	li $a1, DOWN
 	jal collision_check
+	
+	la $t0, player
+	lw $t1, PLAYER_Y($t0)
+	add $t1, $t1, $v1		# player_y + actual y movement
+	sw $t1, PLAYER_Y($t0)		# Update player_y
+	sw $v0, IS_MAX_DOWN($t0)	# Update player is_max_down
 
-	lw $t9, PLAYER_Y($s1)
-	add $t9, $t9, $v1		# player_y + actual y movement
-	sw $t9, PLAYER_Y($s1)		# Update player_y
-	sw $v0, IS_MAX_DOWN($s1)	# Update player is_max_down
-
-	# Erase current player position
-	move $v0, $s4
+	# Pop and erase current player position
+	lw $v0, 0($sp)
+	addi $sp, $sp, 4
 	jal erase_cat
 	
 	# Paint new player position
@@ -402,8 +465,8 @@ fall_next:
 	li $a0, SLEEP
 	syscall
 	
-	sll $s6, $s6, 1			# Next falling height (multiply by 2)
-	bnez $s6, fall_down
+	sll $s0, $s0, 1			# Next falling height (multiply by 2)
+	bnez $s0, fall_down
 	
 	j paint_game
 
@@ -412,9 +475,9 @@ fall_next:
 # $a1 = direction of movement
 # $v0 = 1 or 0, if a collision occurred or not
 # $v1 = actual movement
-collision_check:	
-	sw $zero, ON_PLAT($s1)		# Reset on a platform
+collision_check:
 	li $t0, 1			# Movement step
+	la $s1, player			# $s1 stores the player info
 	lw $t2, PLAYER_H($s1)		# player_h
 	lw $t3, PLAYER_W($s1)		# player_w
 	lw $t8, PLAYER_X($s1)		# player_x
@@ -439,7 +502,6 @@ collision_check:
 	move $t9, $t4
 	li $t6, 1
 	
-	
 collision_outer:
 	li $t1, 0			# Area of collision depends on player's height or width
 	
@@ -462,18 +524,19 @@ collision_y:
 
 collision_test:
 	# Check x step w.r.t. boundaries
-	blt $t3, 0, collision_true
-	bgt $t3, 119, collision_true
+	blt $t3, LOWER_XLIM, collision_true
+	bgt $t3, UPPER_XLIM, collision_true
 	
 	# Check y step w.r.t. boundaries
-	blt $t4, 0, collision_true
-	bgt $t4, 119, collision_true
+	blt $t4, LOWER_YLIM, collision_true
+	bgt $t4, UPPER_YLIM, collision_true
 	
 	# Calculate offset
 	sll $t4, $t4, 9			# $t4 = Display With in Pixels*player_y
 	sll $t3, $t3, 2			# $t3 = Unit Width in Pixels*player_x
 	add $t3, $t3, $t4		# offset = $t3 + $t4
-	add $t4, $s0, $t3		# $t4 = base + offset
+	li $t4, BASE_ADDRESS 		# $s0 stores the base address for display
+	add $t4, $t4, $t3		# $t4 = base + offset
 	
 	# Check colour on this step
 	lw $t3, 0($t4)
@@ -501,6 +564,7 @@ collision_false:
 
 collision_plat:
 	li $t3, 1
+	la $s1, player			# $s1 stores the player info
 	sw $t3, ON_PLAT($s1)		# Player is on a platform
 	li $v0, 1
 	li $a0, 908
@@ -514,191 +578,245 @@ collision_true:
 
 
 # ---------------------+= PAINTING THE SCREEN =+---------------------
-# Paint the map of area provided by...
+# Paint the map provided by...
 # $a0 = number of rectangles to paint
 # $a1 = array of rectangles to paint
 # $a2 = colour of rectangles to paint
 # $a3 = type of rectanlges to paint (act as array len)
 paint_map:
-	li $t1, 0
-	sll $t0, $a0, 4
+	# Completed rectangles counter
+	li $s0, 0
+	
+	# Total rectangles to paint
+	sll $s1, $a0, 4	
 	beq $a3, SESSILE, paint_rectangle
-	sll $t0, $a0, 5
+	sll $s1, $a0, 5
 	
 paint_rectangle:
-	add $t4, $a1, $t1		# Address of current rectangle
-	lw $t6, OBJ_X($t4)		# rectangle_x
-	lw $t7, OBJ_Y($t4)		# rectangle_y
-	lw $t8, OBJ_W($t4)		# rectangle_width
-	lw $t9, OBJ_H($t4)		# rectangle_height
+	# Address of current rectangle ($t0)
+	add $t0, $a1, $s0
 	
-	# Starting position relative to BASE_ADDRESS ($t4)
-	sll $t7, $t7, 9
-	sll $t4, $t6, 2
-	add $t4, $t4, $t7
-	add $t4, $s0, $t4
+	# Starting position relative to BASE_ADDRESS ($t1)
+	lw $t1, OBJ_Y($t0)
+	sll $t1, $t1, 9
+	lw $t2, OBJ_X($t0)
+	sll $t2, $t2, 2
+	add $t1, $t2, $t1
+	li $t2, BASE_ADDRESS
+	add $t1, $t2, $t1
 	
-	# Save starting position
-	move $t6, $t4
+	# Save starting position ($s3)
+	move $s3, $t1
 	
-	# Colouring x limit relative to BASE_ADDRESS ($t8)
-	sll $t8, $t8, 2
-	add $t8, $t4, $t8
+	# Colouring x limit relative to BASE_ADDRESS ($t2)
+	lw $t2, OBJ_W($t0)
+	sll $t2, $t2, 2
+	add $t2, $t1, $t2
 	
-	# Count number of coloured rows
-	li $t5, 0
+	# Completed rows counter
+	li $s4, 0
 
 colour_row:
-	sw $a2, 0($t4)			# Colour pixel
-	addi $t4, $t4, 4		# Next pixel in row
-	blt $t4, $t8, colour_row	# Continue colouring until x limit is reached
+	sw $a2, 0($t1)			# Colour pixel
+	addi $t1, $t1, 4		# Next square in row
+	blt $t1, $t2, colour_row	# Continue colouring until x limit is reached
 	
-	move $t4, $t6 			# Reset x position
-	addi $t4, $t4, DISPLAY_W	# Jump to next row
-	addi $t8, $t8, DISPLAY_W	# Jump to next row
-	move $t6, $t4			# Save x position
-	addi $t5, $t5, 1		# Increment counter
-	blt $t5, $t9, colour_row	# Continue if $t5 < rectangle_height
+	move $t1, $s3 			# Reset x position
+	addi $t1, $t1, DISPLAY_W	# Jump to next row
+	addi $t2, $t2, DISPLAY_W	# Jump to next row
+	move $s3, $t1			# Save x position
 	
-	add $t1, $t1, $a3		# Get next possible rectangle (increment by array length)
+	addi $s4, $s4, 1		# Increment counter
+	lw $t3, OBJ_H($t0)		# rectangle_height
+	blt $s4, $t3, colour_row	# Continue until rectangle_height
 	
-	blt $t1, $t0, paint_rectangle	# Check if there are still rectangles to paint
+	add $s0, $s0, $a3		# Get next possible rectangle (increment by array length)
+	blt $s0, $s1, paint_rectangle	# Check if there are still rectangles to paint
 	jr $ra
-	
-# Paint one frame of the game. This includes players, moving platforms, and other entities.
+
+
+# Paints one frame of the game. This includes players, moving platforms, and other entities.
 paint_game:
 	# Paint the player
 	jal get_player_pos
 	jal paint_cat
 	
 	# Gravity: let player fall if it can still move down
-	lw $t0, IS_MAX_DOWN($s1)
+	la $t0, player
+	lw $t0, IS_MAX_DOWN($t0)
 	beqz $t0, fall_player
+
+paint_area:
+	# Push plat counter, on_plat tracker and platforms on stack
+	addi $sp, $sp, -12
+	li $t0, 0
+	sw $t0, 8($sp)
+	sw $t0, 4($sp)
+	la $t0, area1_plats
+	sw $t0, 0($sp)
 	
-platform_movement:
-	la $s7, area1_mobplats
-	li $s6, 0			# mobplat counter
-	li $s3, 0			# on plat tracker
-paint_mobplat:
-	# Erase the mobile platforms of Area 1
-	li $a0, 1			# Number of rectangles to paint
-	move $a1, $s7			# Array of rectangles to paint
-	li $a2, BG_COL			# Colour of rectangles to paint
-	li $a3, MOBILE			# Type of rectanlges to paint
+erase_plat:
+	# Erase the platforms of area1
+	li $a0, 1
+	lw $a1,  0($sp)
+	li $a2, BG_COL
+	li $a3, MOBILE
 	jal paint_map
 	
 	# Check if player is still on platform
-	lw $s3, ON_PLAT($s1)
-	beqz $s3, compute_movement
+	la $t0, player
+	lw $t0, ON_PLAT($t0)
+	beqz $t0, off_plat
 	
-	lw $t4, OBJ_X($s7)		# platform_x
-	lw $t5, OBJ_W($s7)		# platform_w
-	lw $t8, PLAYER_X($s1)		# player_x
-	lw $t9, PLAYER_W($s1)		# player_w
-	
-	lw $t3, PLAYER_DIR($s1)
-	
+on_plat_x:	
 	# Player left most is not greater than platform right
-	add $t6, $t4, $t5
-	sub $t7, $t8, $t9
-	bgt $t7, $t6, off_mobplat
+	lw $t0, 0($sp)
+	lw $t1, OBJ_X($t0)
+	lw $t2, OBJ_W($t0)
+	add $t1, $t1, $t2
+	la $t0, player
+	lw $t2, PLAYER_X($t0)
+	lw $t3, PLAYER_W($t0)
+	sub $t2, $t2, $t3
+	bgt $t2, $t1, off_plat
 	
 	# Player right most is not less than platform left
-	blt $t8, $t4, off_mobplat
+	la $t0, player
+	lw $t0, PLAYER_X($t0)
+	lw $t1, 0($sp)
+	lw $t1, OBJ_X($t1)
+	blt $t0, $t1, off_plat
 	
-	li $v0, 1
-	li $a0, 7
-	syscall
-	
-	j compute_movement
+	# Player is on this platform
+	li $t0, TRUE
+	sw $t0, 4($sp)
+	j move_plat
 
-off_mobplat:
+off_plat:
 	# Player is not on this platform
-	li $s3, 0
+	li $t0, FALSE
+	sw $t0, 4($sp)
 	
-compute_movement:	
-	lw $t1, OBJ_MOVEMENT($s7)
-	lw $t2, OBJ_FRAME($s7)		# Get current frame
-	lw $t3, OBJ_DIR($s7)
-	lw $t4, OBJ_SPEED($s7)
+move_plat:
+	lw $t0, 0($sp)
+	lw $t1, OBJ_MOVEMENT($t0)
+	lw $t2, OBJ_FRAME($t0)
 	
-	bge $t2, $t1, swap_dir
-	bltz $t2, swap_dir
-	j increment_plat
+	# Check if reached max movement
+	bge $t2, $t1, swap_plat_dir
+	bltz $t2, swap_plat_dir
+	
+	j plat_step
 
-swap_dir:
-	sub $t4, $zero, $t4
-	sw $t4, OBJ_SPEED($s7)
+swap_plat_dir:
+	# Change direction of platform movement
+	lw $t1, OBJ_SPEED($t0)
+	sub $t1, $zero, $t1
+	sw $t1, OBJ_SPEED($t0)	
 	
-increment_plat:
-	add $t2, $t2, $t4
-	sw $t2, OBJ_FRAME($s7)
+plat_step:
+	# Update platform frame
+	lw $t1, OBJ_SPEED($t0)
+	add $t2, $t2, $t1
+	sw $t2, OBJ_FRAME($t0)
 
-	bne $t3, HORZ, vertical_movement
-	lw $t8, OBJ_X($s7)
-	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
-	sw $t8, OBJ_X($s7)
+	lw $t0, 0($sp)
+	lw $t0, OBJ_DIR($t0)
+	bne $t0, HORZ, plat_step_vert
+
+plat_step_horz:
+	# Update platform_x
+	lw $t0, 0($sp)
+	lw $t1, OBJ_X($t0)
+	lw $t2, OBJ_SPEED($t0)
+	add $t1, $t1, $t2
+	sw $t1, OBJ_X($t0)
 	
-	# Update player_x if its on a horizontal platform
-	beqz $s3, paint_platform
-	move $s4, $t4			# Save
+	# Update player_x if its on this platform
+	lw $t0, 4($sp)
+	beqz $t0, paint_plat
 	
 	# Reset collision tracking
-	sw $zero, IS_MAX_LEFT($s1)
-	sw $zero, IS_MAX_RIGHT($s1)
+	la $t0, player
+	sw $zero, IS_MAX_LEFT($t0)
+	sw $zero, IS_MAX_RIGHT($t0)
 	
 	# Erase current player position
 	jal get_player_pos
 	jal erase_cat
 	
-	lw $t9, PLAYER_X($s1)
-	add $t9, $t9, $s4		# Add current frame to player_x
-	sw $t9, PLAYER_X($s1)
+	# Update player_x
+	lw $t0, 0($sp)
+	lw $t1, OBJ_SPEED($t0)
+	la $t0, player
+	lw $t2, PLAYER_X($t0)
+	add $t2, $t2, $t1
+	sw $t2, PLAYER_X($t0)
 	
 	# Paint new player position
 	jal get_player_pos
 	jal paint_cat
 
-	j paint_platform
+	j paint_plat
 	
-vertical_movement:
-	lw $t8, OBJ_Y($s7)
-	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
-	sw $t8, OBJ_Y($s7)
+plat_step_vert:
+	# Update platform_y
+	lw $t0, 0($sp)
+	lw $t1, OBJ_Y($t0)
+	lw $t2, OBJ_SPEED($t0)
+	add $t1, $t1, $t2
+	sw $t1, OBJ_Y($t0)
 	
-	# Update player_y if its on a vertical platform
-	beqz $s3, paint_platform
-	move $s4, $t4			# Save
+	# Update player_y if its on this platform
+	lw $t0, 4($sp)
+	beqz $t0, paint_plat
 	
 	# Reset collision tracking
-	sw $zero, IS_MAX_LEFT($s1)
-	sw $zero, IS_MAX_RIGHT($s1)
+	la $t0, player
+	sw $zero, IS_MAX_LEFT($t0)
+	sw $zero, IS_MAX_RIGHT($t0)
 	
 	# Erase current player position
 	jal get_player_pos
 	jal erase_cat
 	
-	lw $t9, PLAYER_Y($s1)
-	add $t9, $t9, $s4		# Add current frame to player_y
-	sw $t9, PLAYER_Y($s1)
+	# Update player_y
+	lw $t0, 0($sp)
+	lw $t1, OBJ_SPEED($t0)
+	la $t0, player
+	lw $t2, PLAYER_Y($t0)
+	add $t2, $t2, $t1
+	sw $t2, PLAYER_Y($t0)
 	
 	# Paint new player position
 	jal get_player_pos
 	jal paint_cat
 
-	
-paint_platform:
-	li $a0, 1			# Number of rectangles to paint
-	move $a1, $s7			# Array of rectangles to paint
-	li $a2, PLAT_COL		# Colour of rectangles to paint
-	li $a3, MOBILE			# Type of rectanlges to paint
+paint_plat:
+	# Paint the platforms of area 1
+	li $a0, 1
+	lw $a1, 0($sp)
+	li $a2, PLAT_COL
+	li $a3, MOBILE
 	jal paint_map
 	
-	addi $s7, $s7, MOBILE
-	addi $s6, $s6, 1
+next_plat:
+	# Next platform in area1
+	lw $t0, 0($sp)
+	addi $t0, $t0, MOBILE
+	sw $t0, 0($sp)
+	
+	# Check if there are still platforms to paint
+	lw $t0, 8($sp)
+	addi $t0, $t0, 1
+	sw $t0, 8($sp)
+	
 	li $t1, AREA1_MP
-	blt $s6, $t1, paint_mobplat
+	blt $t0, $t1, erase_plat
 
+	# Reclaim space
+	addi $sp, $sp, 12
+	
 	li $s6, 0
 	li $v0, 32
 	li $a0, SLEEP
@@ -721,6 +839,7 @@ erase_cat:
 	li $t5, BG_COL
 
 cat_facing_right:
+	la $s1, player			# $s1 stores the player info
 	lw $t6, PLAYER_DIR($s1)
 	beq $t6, LEFT, cat_facing_left
 	sw $t3, 0($v0)
@@ -860,13 +979,50 @@ cat_facing_left:
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
 # Return the address of the player's current position
 get_player_pos:
-	lw $t8, PLAYER_X($s1)
-	lw $t9, PLAYER_Y($s1)
-	sll $t9, $t9, 9			# $t9 = Display With in Pixels*player_y
-	sll $t8, $t8, 2			# $t8 = Unit Width in Pixels*player_x
-	add $t8, $t8, $t9		# offset = $t8 + $t9
-	add $v0, $s0, $t8		# $v0 = base + offset
+	la $t0, player
+	lw $t1, PLAYER_X($t0)
+	lw $t2, PLAYER_Y($t0)
+	sll $t2, $t2, 9			# Display With in Pixels*player_y
+	sll $t1, $t1, 2			# Unit Width in Pixels*player_x
+	add $t1, $t1, $t2		# Offset
+	li $t0, BASE_ADDRESS 		# Base address for display
+	add $v0, $t0, $t1		# $v0 = base + offset
 	jr $ra
+	
+# Reset to default values
+game_reset:
+	# Reset game time
+	la $t0, time_counter
+	li $t1, TIME_RESET
+	sw $t1, 0($t0)
+	
+	# Reset player info
+	la $t0, player
+	li $t1, START_X
+	sw $t1, PLAYER_X($t0)
+	li $t1, START_Y
+	sw $t1, PLAYER_Y($t0)
+	li $t1, 12
+	sw $t1, PLAYER_W($t0)
+	li $t1, 9
+	sw $t1, PLAYER_H($t0)
+	li $t1, RIGHT
+	sw $t1, PLAYER_DIR($t0)
+	li $t1, START_SPEED
+	sw $t1, MOVEMENT_SPEED($t0)
+	li $t1, START_JHEIGHT
+	sw $t1, JUMP_HEIGHT($t0)
+	li $t1, START_JSPAN
+	sw $t1, JUMP_SPAN($t0)
+	li $t1, FALSE
+	sw $t1, ON_PLAT($t0)
+	sw $t1, IS_MAX_RIGHT($t0)
+	sw $t1, IS_MAX_LEFT($t0)
+	sw $t1, IS_MAX_UP($t0)
+	li $t1, TRUE
+	sw $t1, IS_MAX_DOWN($t0)
+	
+	j main
 
 end:
 	li $v0, 10			# Terminate the program gracefully
