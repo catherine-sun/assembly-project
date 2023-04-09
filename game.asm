@@ -87,10 +87,11 @@
 .eqv	MOVEMENT_SPEED	20
 .eqv	JUMP_HEIGHT	24
 .eqv	JUMP_SPAN	28
-.eqv	IS_MAX_LEFT	32
-.eqv	IS_MAX_RIGHT	36
-.eqv	IS_MAX_UP	40
-.eqv	IS_MAX_DOWN	44
+.eqv	ON_PLAT		32
+.eqv	IS_MAX_LEFT	36
+.eqv	IS_MAX_RIGHT	40
+.eqv	IS_MAX_UP	44
+.eqv	IS_MAX_DOWN	48
 
 .eqv	TIME_RESET	2000
 
@@ -113,8 +114,8 @@ area1_mobplats:	.word 	23, 14, 3, 12, VERT, 35, 0, 2,
 
 # Player info:		player_x	player_y	player_w	player_h	player_dir
 player:		.word	63, 		119, 		12,		9,		RIGHT,
-#			movement_speed	jump_height	jump_span
-			1, 		16, 		3,
+#			movement_speed	jump_height	jump_span	on_plat
+			1, 		16, 		3,		0,
 #			is_max_left	is_max_right	is_max_up	is_max_down
 			0,		0,		0,		1
 .text
@@ -412,6 +413,7 @@ fall_next:
 # $v0 = 1 or 0, if a collision occurred or not
 # $v1 = actual movement
 collision_check:	
+	sw $zero, ON_PLAT($s1)		# Reset on a platform
 	li $t0, 1			# Movement step
 	lw $t2, PLAYER_H($s1)		# player_h
 	lw $t3, PLAYER_W($s1)		# player_w
@@ -476,6 +478,13 @@ collision_test:
 	# Check colour on this step
 	lw $t3, 0($t4)
 	beq $t3, WALL_COL, collision_true
+	
+	# Can only land on a platform using feet
+	bne $a1, DOWN, not_falling
+	beq $t3, PLAT_COL, collision_plat
+	
+not_falling:
+	beq $t3, PLAT_COL, collision_true
 
 	# This square is safe
 	addi $t1, $t1, 1		# Next collision square
@@ -490,6 +499,13 @@ collision_false:
 	move $v1, $a0			# Actual movement is expected movement
 	jr $ra
 
+collision_plat:
+	li $t3, 1
+	sw $t3, ON_PLAT($s1)		# Player is on a platform
+	li $v0, 1
+	li $a0, 908
+	syscall
+	
 collision_true:
 	li $v0, 1			# A collision occurred
 	subi $t0, $t0, 1		# Last step that didn't cause a collision
@@ -559,11 +575,11 @@ paint_game:
 	lw $t0, IS_MAX_DOWN($s1)
 	beqz $t0, fall_player
 	
-paint_mobplats:
+platform_movement:
 	la $s7, area1_mobplats
 	li $s6, 0			# mobplat counter
-paint_one_mobplat:
-
+	li $s3, 0			# on plat tracker
+paint_mobplat:
 	# Erase the mobile platforms of Area 1
 	li $a0, 1			# Number of rectangles to paint
 	move $a1, $s7			# Array of rectangles to paint
@@ -571,6 +587,36 @@ paint_one_mobplat:
 	li $a3, MOBILE			# Type of rectanlges to paint
 	jal paint_map
 	
+	# Check if player is still on platform
+	lw $s3, ON_PLAT($s1)
+	beqz $s3, compute_movement
+	
+	lw $t4, OBJ_X($s7)		# platform_x
+	lw $t5, OBJ_W($s7)		# platform_w
+	lw $t8, PLAYER_X($s1)		# player_x
+	lw $t9, PLAYER_W($s1)		# player_w
+	
+	lw $t3, PLAYER_DIR($s1)
+	
+	# Player left most is not greater than platform right
+	add $t6, $t4, $t5
+	sub $t7, $t8, $t9
+	bgt $t7, $t6, off_mobplat
+	
+	# Player right most is not less than platform left
+	blt $t8, $t4, off_mobplat
+	
+	li $v0, 1
+	li $a0, 7
+	syscall
+	
+	j compute_movement
+
+off_mobplat:
+	# Player is not on this platform
+	li $s3, 0
+	
+compute_movement:	
 	lw $t1, OBJ_MOVEMENT($s7)
 	lw $t2, OBJ_FRAME($s7)		# Get current frame
 	lw $t3, OBJ_DIR($s7)
@@ -592,12 +638,54 @@ increment_plat:
 	lw $t8, OBJ_X($s7)
 	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
 	sw $t8, OBJ_X($s7)
+	
+	# Update player_x if its on a horizontal platform
+	beqz $s3, paint_platform
+	move $s4, $t4			# Save
+	
+	# Reset collision tracking
+	sw $zero, IS_MAX_LEFT($s1)
+	sw $zero, IS_MAX_RIGHT($s1)
+	
+	# Erase current player position
+	jal get_player_pos
+	jal erase_cat
+	
+	lw $t9, PLAYER_X($s1)
+	add $t9, $t9, $s4		# Add current frame to player_x
+	sw $t9, PLAYER_X($s1)
+	
+	# Paint new player position
+	jal get_player_pos
+	jal paint_cat
+
 	j paint_platform
 	
 vertical_movement:
 	lw $t8, OBJ_Y($s7)
 	add $t8, $t8, $t4		# Add current frame to obj_x or obj_y
 	sw $t8, OBJ_Y($s7)
+	
+	# Update player_y if its on a vertical platform
+	beqz $s3, paint_platform
+	move $s4, $t4			# Save
+	
+	# Reset collision tracking
+	sw $zero, IS_MAX_LEFT($s1)
+	sw $zero, IS_MAX_RIGHT($s1)
+	
+	# Erase current player position
+	jal get_player_pos
+	jal erase_cat
+	
+	lw $t9, PLAYER_Y($s1)
+	add $t9, $t9, $s4		# Add current frame to player_y
+	sw $t9, PLAYER_Y($s1)
+	
+	# Paint new player position
+	jal get_player_pos
+	jal paint_cat
+
 	
 paint_platform:
 	li $a0, 1			# Number of rectangles to paint
@@ -609,7 +697,7 @@ paint_platform:
 	addi $s7, $s7, MOBILE
 	addi $s6, $s6, 1
 	li $t1, AREA1_MP
-	blt $s6, $t1, paint_one_mobplat
+	blt $s6, $t1, paint_mobplat
 
 	li $s6, 0
 	li $v0, 32
@@ -624,6 +712,7 @@ paint_cat:
 	li $t3, BODY_COL
 	li $t4, SPOT_COL
 	li $t5, EYES_COL
+	
 	j cat_facing_right
 
 erase_cat:
