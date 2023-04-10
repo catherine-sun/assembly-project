@@ -52,6 +52,7 @@
 .eqv	BLURPLE		0x5d6fc7
 .eqv	MUTED_BLURPLE	0x445195
 .eqv	BRIGHT_RED	0xf36776
+.eqv	EMPTY_COL	0x56629e
 
 # Boundaries:
 .eqv	DISPLAY_W	512
@@ -135,6 +136,8 @@
 
 .eqv	GAME_BAR_X	28
 .eqv	GAME_BAR_Y	120
+.eqv	SCORE_X		65
+.eqv	SCORE_Y		119
 
 .eqv	TIME_RESET	2000
 
@@ -771,6 +774,10 @@ paint_area:
 	lw $a2, current_area
 	jal paint_game_bar_num
 	
+	li $a0, SCORE_X
+	li $a1, SCORE_Y
+	jal paint_score
+	
 	# Paint area items
 	jal paint_items
 	
@@ -1398,6 +1405,80 @@ paint_three:
 	#sw $t3, 28($v0)
 	
 	jr $ra
+
+
+# ($a0, $a1) = (x, y) of bottom right corner of last star	
+paint_score:
+	sll $t2, $a1, 9
+	sll $t1, $a0, 2
+	add $t1, $t1, $t2		# Offset
+	li $t0, BASE_ADDRESS 		# Base address
+	add $v0, $t0, $t1		# $v0 = base + offset
+	
+	li $t3, EMPTY_COL
+	li $t4, EMPTY_COL
+	li $t5, EMPTY_COL
+	
+	lw $t0, star_count
+	beqz $t0, colour_score
+	li $t5, STAR_COL
+	beq $t0, 1, colour_score
+	li $t4, STAR_COL
+	beq $t0, 2, colour_score
+	li $t3, STAR_COL
+
+colour_score:
+	sw $t3, -4($v0)
+	sw $t3, -12($v0)
+	
+	sw $t4, -32($v0)
+	sw $t4, -40($v0)
+	
+	sw $t5, -60($v0)
+	sw $t5, -68($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	sw $t4, -32($v0)
+	sw $t4, -36($v0)
+	sw $t4, -40($v0)
+	
+	sw $t5, -60($v0)
+	sw $t5, -64($v0)
+	sw $t5, -68($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	sw $t3, -16($v0)
+	
+	sw $t4, -28($v0)
+	sw $t4, -32($v0)
+	sw $t4, -36($v0)
+	sw $t4, -40($v0)
+	sw $t4, -44($v0)
+	
+	sw $t5, -56($v0)
+	sw $t5, -60($v0)
+	sw $t5, -64($v0)
+	sw $t5, -68($v0)
+	sw $t5, -72($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+	
+	sw $t4, -36($v0)
+	
+	sw $t5, -64($v0)
+	
+	jr $ra
+	
+	
 
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
 # Return the address of the player's current position
