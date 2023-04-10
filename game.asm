@@ -94,9 +94,12 @@
 .eqv	ITEM_Y		8
 .eqv	IS_CLAIMED	12
 
-# Item Types:
+# Item Types & Info:
 .eqv	BOOST		1
 .eqv	STAR		2
+.eqv	STAR_W		5
+.eqv	STAR_H		4
+
 
 # Directions:
 .eqv	LEFT		1
@@ -391,7 +394,7 @@ move_right:
 	lw $t1, PLAYER_X($t0)
 	add $t1, $t1, $v1		# player_x + actual x movement
 	sw $t1, PLAYER_X($t0)		# Update player_x
-	sw $v0, IS_MAX_RIGHT($s1)	# Update player is_max_right
+	sw $v0, IS_MAX_RIGHT($t0)	# Update player is_max_right
 	
 	# Pop and erase current player position
 	lw $v0, 0($sp)
@@ -601,34 +604,44 @@ fall_next:
 # $v0 = 1 or 0, if a collision occurred or not
 # $v1 = actual movement
 collision_check:
-	li $t0, 1			# Movement step
-	la $s1, player			# $s1 stores the player info
-	lw $t2, PLAYER_H($s1)		# player_h
-	lw $t3, PLAYER_W($s1)		# player_w
-	lw $t8, PLAYER_X($s1)		# player_x
-	lw $t9, PLAYER_Y($s1)		# player_y
+	# Movement step ($t0)
+	li $t0, 1
+
+	# Get collision start 	($t8, $t9)
+	# Max movement step 	($t2)
+	# Increment		($t6)
+	la $t1, player
+	lw $t2, PLAYER_H($t1)
+	lw $t3, PLAYER_W($t1)
+	lw $t8, PLAYER_X($t1)
+	lw $t9, PLAYER_Y($t1)
 	
+	# (player_x, player_y) for right
 	li $t6, 1
 	beq $a1, RIGHT, collision_outer
 	
+	# (player_x - player_w + 1, player_y) for left
 	li $t6, -1
 	move $t4, $t8
 	sub $t8, $t8, $t3		
-	addi $t8, $t8, 1		# bottom left corner
+	addi $t8, $t8, 1
 	beq $a1, LEFT, collision_outer
 	
+	# (player_x, player_y - player_h + 1) for up
 	move $t8, $t4
 	move $t4, $t9
 	sub $t9, $t9, $t2		
-	addi $t9, $t9, 1		# top left corner
+	addi $t9, $t9, 1
 	move $t2, $t3
 	beq $a1, UP, collision_outer
 	
+	# (player_x, player_y) for down
 	move $t9, $t4
 	li $t6, 1
 	
 collision_outer:
-	li $t1, 0			# Area of collision depends on player's height or width
+	# Collision counter ($t1 = 0, ..., $t2)
+	li $t1, 0
 	
 collision_inner:
 	mult $t0, $t6
@@ -656,15 +669,19 @@ collision_test:
 	blt $t4, LOWER_YLIM, collision_true
 	bgt $t4, UPPER_YLIM, collision_true
 	
-	# Calculate offset
-	sll $t4, $t4, 9			# $t4 = Display With in Pixels*player_y
-	sll $t3, $t3, 2			# $t3 = Unit Width in Pixels*player_x
-	add $t3, $t3, $t4		# offset = $t3 + $t4
-	li $t4, BASE_ADDRESS 		# $s0 stores the base address for display
-	add $t4, $t4, $t3		# $t4 = base + offset
+	# Calculate base_address + offset ($t4)
+	sll $t4, $t4, 9
+	sll $t3, $t3, 2
+	add $t3, $t3, $t4
+	li $t4, BASE_ADDRESS
+	add $t4, $t4, $t3
 	
 	# Check colour on this step
 	lw $t3, 0($t4)
+	beq $t3, STAR_COL, handle_star
+	beq $t3, BOOST_COL, handle_boost
+
+continue_collision:
 	beq $t3, WALL_COL, collision_true
 	
 	# Can only land on a platform using feet
@@ -689,15 +706,97 @@ collision_false:
 
 collision_plat:
 	li $t3, 1
-	la $s1, player			# $s1 stores the player info
-	sw $t3, ON_PLAT($s1)		# Player is on a platform
+	la $t4, player
+	sw $t3, ON_PLAT($t4)		# Player is on a platform
 	
 collision_true:
 	li $v0, 1			# A collision occurred
 	subi $t0, $t0, 1		# Last step that didn't cause a collision
 	move $v1, $t0			# Actual movement
 	jr $ra
+	
+	
+handle_star:
+	# Checked stars counter
+	li $s0, 0
+	
+	la $s1, area1_items
+	li $s2, AREA1_IT
+	
+	# ($s3, $s4) = (x, y) position of the star that needs to be erased
+	subi $t4, $t4, BASE_ADDRESS
+	li $s3, DISPLAY_W
+	div $t4, $s3
+	mfhi $s3
+	sra $s3, $s3, 2
+	mflo $s4
 
+find_collision_star:
+	lw $s5, ITEM_TYPE($s1)
+	bne $s5, STAR, find_collision_star_next
+	
+	lw $s5, ITEM_X($s1)
+	bgt $s3, $s5, find_collision_star_next
+	
+	subi $s5, $s5, STAR_W
+	blt $s3, $s5, find_collision_star_next
+	
+	lw $s5, ITEM_Y($s1)
+	bgt $s4, $s5, find_collision_star_next
+	
+	subi $s5, $s5, STAR_H
+	blt $s4, $s5, find_collision_star_next
+	
+	li $s5, TRUE
+	sw $s5, IS_CLAIMED($s1)
+	
+	# Calculate base_address + offset ($v0)
+	lw $s3, ITEM_X($s1)
+	lw $s4, ITEM_Y($s1)
+	sll $s4, $s4, 9
+	sll $s3, $s3, 2
+	add $s3, $s3, $s4		# Offset
+	li $s5, BASE_ADDRESS 		# Base address
+	add $v0, $s5, $s3		# $v0 = base + offset
+
+	li $t3, BG_COL
+	sw $t3, -4($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	sw $t3, -16($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+	
+	lw $s0, star_count
+	addi $s0, $s0, 1
+	sw $s0, star_count
+	
+	j continue_collision
+	
+
+find_collision_star_next:
+	# Get next possible item (increment by array length)
+	addi $s1, $s1, ITEM
+	addi $s0, $s0, 1
+	
+	# Check if there are still items to look at
+	blt $s0, $s2, find_collision_star
+	j continue_collision
+
+handle_boost:
+	j continue_collision
+	
 
 # ---------------------+= PAINTING THE SCREEN =+---------------------
 # Paint the map provided by...
@@ -759,10 +858,6 @@ colour_row:
 
 # Paints one frame of the game. This includes players, moving platforms, and other entities.
 paint_game:
-	# Paint the player
-	jal get_player_pos
-	jal paint_cat
-	
 	# Gravity: let player fall if it can still move down
 	la $t0, player
 	lw $t0, IS_MAX_DOWN($t0)
@@ -987,6 +1082,10 @@ complete_check:
 	li $v0, 32
 	li $a0, SLEEP
 	syscall
+	
+	# Paint the player
+	jal get_player_pos
+	jal paint_cat
 	
 	j game_running
 
@@ -1228,17 +1327,12 @@ colour_boost:
 	j item_next
 	
 paint_star:
-	# Check if star is_claimed
+	# Skip if star is_claimed
 	lw $t1, IS_CLAIMED($t0)
-	beq $t1, TRUE, erase_star
+	beq $t1, TRUE, item_next
 	
 	li $t3, STAR_COL
-	j colour_star
-
-erase_star:
-	li $t3, BG_COL
 	
-colour_star:
 	sw $t3, -4($v0)
 	sw $t3, -12($v0)
 	
