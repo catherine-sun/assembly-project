@@ -70,7 +70,7 @@
 .eqv	AREA2_MP	2
 .eqv	AREA2_IT	4
 .eqv	AREA3_N		6
-.eqv	AREA3_MP	3
+.eqv	AREA3_MP	2
 .eqv	AREA3_IT	4
 
 # Array types:
@@ -152,12 +152,12 @@
 padding:	.space	36000
 time_counter:	.word	TIME_RESET
 newline:	.asciiz	"\n"
-current_area:	.word	1
+current_area:	.word	3
 star_count:	.word	0
 
 
 # Player info:		player_x	player_y	player_w	 player_h	player_dir
-player:		.word	AREA1_X,	AREA1_Y, 	12,		9,		RIGHT,
+player:		.word	AREA3_X,	AREA3_Y, 	12,		9,		RIGHT,
 #			movement_speed	jump_height	jump_span	is_boosted	on_plat
 			START_SPEED,	START_JHEIGHT,	START_JSPAN,	FALSE,		FALSE,
 #			is_max_left	is_max_right	is_max_up	is_max_down
@@ -217,7 +217,6 @@ area2_plats:	.word	30, 30, 12, 5, HORZ, 10, 0, 1,
 			84, 76, 10, 6, VERT, 18, 0, 1
 
 area3_plats:	.word	75, 34, 14, 4, HORZ, 10, 0, 1,
-			18, 44, 19, 4, HORZ, 34, 0, 1,
 			64, 58, 20, 4, HORZ, 24, 0, 1
 	
 		
@@ -1040,6 +1039,10 @@ erase_plat:
 	lw $t0, ON_PLAT($t0)
 	beqz $t0, off_plat
 	
+	lw $t0, 0($sp)
+	lw $t0, OBJ_DIR($t0)
+	beq $t0, HORZ, on_plat_y
+	
 on_plat_x:	
 	# Player left most is not greater than platform right
 	lw $t0, 0($sp)
@@ -1058,6 +1061,24 @@ on_plat_x:
 	lw $t1, 0($sp)
 	lw $t1, OBJ_X($t1)
 	blt $t0, $t1, off_plat
+	
+	# Player is on this platform
+	li $t0, TRUE
+	sw $t0, 4($sp)
+	j move_plat
+	
+on_plat_y:
+	# player_y is right on top of platform
+	lw $t0, 0($sp)
+	lw $t1, OBJ_Y($t0)
+	subi $t1, $t1, 1
+	la $t0, player
+	lw $t2, PLAYER_Y($t0)
+	bne $t2, $t1, off_plat
+	
+	li $v0, 1
+	li $a0, 222
+	syscall
 	
 	# Player is on this platform
 	li $t0, TRUE
