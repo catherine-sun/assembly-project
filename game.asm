@@ -53,6 +53,9 @@
 .eqv	MUTED_BLURPLE	0x445195
 .eqv	BRIGHT_RED	0xf36776
 .eqv	EMPTY_COL	0x56629e
+.eqv	WOOST_COL	0xf4727d
+.eqv	ORANGE		0xff8357
+.eqv	REVERT_COL	0x5abe74
 
 # Boundaries:
 .eqv	DISPLAY_W	512
@@ -65,13 +68,13 @@
 .eqv	BORDER_N	4
 .eqv	AREA1_N		10
 .eqv	AREA1_MP	3
-.eqv	AREA1_IT	4
+.eqv	AREA1_IT	5
 .eqv	AREA2_N		9
 .eqv	AREA2_MP	2
-.eqv	AREA2_IT	4
+.eqv	AREA2_IT	7
 .eqv	AREA3_N		6
 .eqv	AREA3_MP	2
-.eqv	AREA3_IT	4
+.eqv	AREA3_IT	7
 
 # Array types:
 .eqv	SESSILE		16
@@ -96,10 +99,17 @@
 
 # Item Types & Info:
 .eqv	BOOST		1
+.eqv	BOOST_W		5
+.eqv	BOOST_H		6
 .eqv	STAR		2
 .eqv	STAR_W		5
 .eqv	STAR_H		4
-
+.eqv	WOOST		3
+.eqv	WOOST_W		9
+.eqv	WOOST_H		5
+.eqv	REVERT		4
+.eqv	REVERT_W	6
+.eqv	REVERT_H	6
 
 # Directions:
 .eqv	LEFT		1
@@ -119,11 +129,12 @@
 .eqv	JUMP_HEIGHT	24
 .eqv	JUMP_SPAN	28
 .eqv	IS_BOOSTED	32
-.eqv	ON_PLAT		36
+.eqv	IS_WOOSTED	36
 .eqv	IS_MAX_LEFT	40
 .eqv	IS_MAX_RIGHT	44
 .eqv	IS_MAX_UP	48
 .eqv	IS_MAX_DOWN	52
+.eqv	ON_PLAT		56
 
 # Player initiation
 .eqv	AREA1_X		63
@@ -133,11 +144,14 @@
 .eqv	AREA3_X		68
 .eqv	AREA3_Y		89
 .eqv	START_SPEED	1
-.eqv	START_JHEIGHT	16
-.eqv	START_JSPAN	3
+.eqv	START_JHEIGHT	20
+.eqv	START_JSPAN	4
 .eqv	BOOST_SPEED	1
 .eqv	BOOST_JHEIGHT	32
-.eqv	BOOST_JSPAN	3
+.eqv	BOOST_JSPAN	2
+.eqv	WOOST_SPEED	1
+.eqv	WOOST_JHEIGHT	16
+.eqv	WOOST_JSPAN	6
 .eqv	TRUE		1
 .eqv	FALSE		0
 
@@ -152,16 +166,16 @@
 padding:	.space	36000
 time_counter:	.word	TIME_RESET
 newline:	.asciiz	"\n"
-current_area:	.word	3
+current_area:	.word	1
 star_count:	.word	0
 
 
 # Player info:		player_x	player_y	player_w	 player_h	player_dir
-player:		.word	AREA3_X,	AREA3_Y, 	12,		9,		RIGHT,
-#			movement_speed	jump_height	jump_span	is_boosted	on_plat
+player:		.word	AREA1_X,	AREA1_Y, 	12,		9,		RIGHT,
+#			movement_speed	jump_height	jump_span	is_boosted	is_woosted
 			START_SPEED,	START_JHEIGHT,	START_JSPAN,	FALSE,		FALSE,
-#			is_max_left	is_max_right	is_max_up	is_max_down
-			FALSE,		FALSE,		FALSE,		TRUE
+#			is_max_left	is_max_right	is_max_up	is_max_down	on_plat
+			FALSE,		FALSE,		FALSE,		TRUE,		FALSE
 
 
 # Area Maps:		(x of top left corner, y of top left corner, width, height) per rectangle
@@ -181,13 +195,13 @@ game_bar2:	.word	8, 114, 34, 9
 area1:		.word	40, 45, 6, 65,
 			46, 84, 36, 6,
 			106, 96, 14, 14,
-			70, 54, 19, 5,
-			78, 28, 42, 6,
+			90, 28, 30, 6,
 			8, 19, 14, 4,
 			8, 55, 12, 4,
 			27, 80, 13, 4
 			8, 106, 14, 4,
-			32, 42, 14, 4
+			32, 42, 14, 4,
+			46, 58, 30, 4
 			
 area2:		.word	8, 61, 23, 6,
 			8, 30, 9, 6,
@@ -209,32 +223,39 @@ area3:		.word	46, 90, 35, 6
 			
 # Moving Platforms:	(x, y, w, h, dir, total movement, current frame, movement speed) per platform
 #			(x,y) top left corner during highest, leftmost position
-area1_plats:	.word 	23, 14, 3, 12, VERT, 18, 0, 2,
-			52, 18, 12, 5, VERT, 26, 0, 1,
-			94, 50, 19, 4, VERT, 24, 0, 1
+area1_plats:	.word 	50, 18, 8, 3, VERT, 8, 0, 1,
+			72, 29, 8, 3, VERT, 16, 0, 2,
+			94, 50, 16, 4, VERT, 24, 0, 1
 
 area2_plats:	.word	30, 30, 12, 5, HORZ, 10, 0, 1,
 			84, 76, 10, 6, VERT, 18, 0, 1
 
-area3_plats:	.word	75, 34, 14, 4, HORZ, 10, 0, 1,
-			64, 58, 20, 4, HORZ, 24, 0, 1
+area3_plats:	.word	25, 34, 14, 4, HORZ, 70, 0, 2,
+			62, 58, 20, 4, HORZ, 26, 0, 1
 	
 		
 # Item locations:	(item_type, item_x, item_y, is_claimed)
 area1_items:	.word	BOOST, 16, 103, FALSE,
 			STAR, 14, 17, FALSE,
-			STAR, 52, 81, FALSE,
+			STAR, 52, 82, FALSE,
 			STAR, 110, 26, FALSE,
+			REVERT, 53, 56, FALSE
 			
 area2_items:	.word	STAR, 38, 48, FALSE,
 			BOOST, 14, 27, FALSE,
 			STAR, 20, 78, FALSE,
-			STAR, 88, 46, FALSE
+			STAR, 88, 46, FALSE,
+			WOOST, 54, 78, FALSE,
+			WOOST, 72, 32, FALSE,
+			REVERT, 92, 108, FALSE
 
 area3_items:	.word	BOOST, 115, 107, FALSE,
 			STAR, 115, 93, FALSE,
 			STAR, 64, 18, FALSE,
-			STAR, 17, 64, FALSE
+			STAR, 17, 64, FALSE,
+			WOOST, 66, 32, FALSE,
+			REVERT, 65, 55, FALSE,
+			BOOST, 17, 54, FALSE
 
 
 .text
@@ -683,6 +704,8 @@ collision_test:
 	lw $t3, 0($t4)
 	beq $t3, STAR_COL, handle_star
 	beq $t3, BOOST_COL, handle_boost
+	beq $t3, WOOST_COL, handle_woost
+	beq $t3, REVERT_COL, handle_revert
 
 continue_collision:
 	beq $t3, WALL_COL, collision_true
@@ -718,7 +741,7 @@ collision_true:
 	move $v1, $t0			# Actual movement
 	jr $ra
 	
-	
+
 handle_star:
 	# Checked items counter
 	li $s0, 0
@@ -777,24 +800,24 @@ find_star:
 	li $s5, BASE_ADDRESS 		# Base address
 	add $v0, $s5, $s3		# $v0 = base + offset
 
-	li $t3, BG_COL
-	sw $t3, -4($v0)
-	sw $t3, -12($v0)
+	li $s3, BG_COL
+	sw $s3, -4($v0)
+	sw $s3, -12($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	sw $s3, 0($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	sw $s3, -16($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, -8($v0)
+	sw $s3, -8($v0)
 	
 	lw $s0, star_count
 	addi $s0, $s0, 1
@@ -849,13 +872,13 @@ find_boost:
 	lw $s5, ITEM_X($s1)
 	bgt $s3, $s5, find_boost_next
 	
-	subi $s5, $s5, STAR_W
+	subi $s5, $s5, BOOST_W
 	blt $s3, $s5, find_boost_next
 	
 	lw $s5, ITEM_Y($s1)
 	bgt $s4, $s5, find_boost_next
 	
-	subi $s5, $s5, STAR_H
+	subi $s5, $s5, BOOST_H
 	blt $s4, $s5, find_boost_next
 	
 	li $s5, TRUE
@@ -870,38 +893,40 @@ find_boost:
 	li $s5, BASE_ADDRESS 		# Base address
 	add $v0, $s5, $s3		# $v0 = base + offset
 	
-	li $t3, BG_COL
+	li $s3, BG_COL
 	
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, 0($v0)
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
-	sw $t3, -16($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, -4($v0)
-	sw $t3, -8($v0)
-	sw $t3, -12($v0)
+	sw $s3, 0($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	sw $s3, -16($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, -8($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -8($v0)
 	
 	la $s0, player
+	li $s1, FALSE
+	sw $s1, IS_WOOSTED($s0)
 	li $s1, TRUE
 	sw $s1, IS_BOOSTED($s0)
 	li $s1, BOOST_SPEED
@@ -921,7 +946,237 @@ find_boost_next:
 	# Check if there are still items to look at
 	blt $s0, $s2, find_boost
 	j continue_collision
+
+
+handle_woost:
+	# Checked items counter
+	li $s0, 0
 	
+	# ($s3, $s4) = (x, y) position of the star that needs to be erased
+	subi $t4, $t4, BASE_ADDRESS
+	li $s3, DISPLAY_W
+	div $t4, $s3
+	mfhi $s3
+	sra $s3, $s3, 2
+	mflo $s4
+	
+	lw $s7, current_area
+	beq $s7, 2, handle_area2_woost
+	beq $s7, 3, handle_area3_woost
+	
+handle_area1_woost:
+	la $s1, area1_items
+	li $s2, AREA1_IT
+	j find_woost
+
+handle_area2_woost:
+	la $s1, area2_items
+	li $s2, AREA2_IT
+	j find_woost
+
+handle_area3_woost:
+	la $s1, area3_items
+	li $s2, AREA3_IT
+
+find_woost:
+	lw $s5, ITEM_TYPE($s1)
+	bne $s5, WOOST, find_woost_next
+	
+	lw $s5, ITEM_X($s1)
+	bgt $s3, $s5, find_woost_next
+
+	subi $s5, $s5, WOOST_W
+	blt $s3, $s5, find_woost_next
+	
+	lw $s5, ITEM_Y($s1)
+	bgt $s4, $s5, find_woost_next
+	
+	subi $s5, $s5, WOOST_H
+	blt $s4, $s5, find_woost_next
+	
+	li $s5, TRUE
+	sw $s5, IS_CLAIMED($s1)
+	
+	# Calculate base_address + offset ($v0)
+	lw $s3, ITEM_X($s1)
+	lw $s4, ITEM_Y($s1)
+	sll $s4, $s4, 9
+	sll $s3, $s3, 2
+	add $s3, $s3, $s4		# Offset
+	li $s5, BASE_ADDRESS 		# Base address
+	add $v0, $s5, $s3		# $v0 = base + offset
+	
+	li $s3, BG_COL
+	
+	sw $s3, -8($v0)
+	sw $s3, -24($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	sw $s3, -16($v0)
+	sw $s3, -20($v0)
+	sw $s3, -24($v0)
+	sw $s3, -28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, 0($v0)
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	sw $s3, -16($v0)
+	sw $s3, -20($v0)
+	sw $s3, -24($v0)
+	sw $s3, -28($v0)
+	sw $s3, -32($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -4($v0)
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	sw $s3, -16($v0)
+	sw $s3, -20($v0)
+	sw $s3, -24($v0)
+	sw $s3, -28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -8($v0)
+	sw $s3, -24($v0)
+	
+	la $s0, player
+	li $s1, FALSE
+	sw $s1, IS_BOOSTED($s0)
+	li $s1, TRUE
+	sw $s1, IS_WOOSTED($s0)
+	li $s1, WOOST_SPEED
+	sw $s1, MOVEMENT_SPEED($s0)
+	li $s1, WOOST_JHEIGHT
+	sw $s1, JUMP_HEIGHT($s0)
+	li $s1, WOOST_JSPAN
+	sw $s1, JUMP_SPAN($s0)	
+
+	j continue_collision
+
+find_woost_next:
+	# Get next possible item (increment by array length)
+	addi $s1, $s1, ITEM
+	addi $s0, $s0, 1
+	
+	# Check if there are still items to look at
+	blt $s0, $s2, find_woost
+	j continue_collision
+	
+	
+
+handle_revert:
+	# Checked items counter
+	li $s0, 0
+	
+	# ($s3, $s4) = (x, y) position of the star that needs to be erased
+	subi $t4, $t4, BASE_ADDRESS
+	li $s3, DISPLAY_W
+	div $t4, $s3
+	mfhi $s3
+	sra $s3, $s3, 2
+	mflo $s4
+	
+	lw $s7, current_area
+	beq $s7, 2, handle_area2_revert
+	beq $s7, 3, handle_area3_revert
+	
+handle_area1_revert:
+	la $s1, area1_items
+	li $s2, AREA1_IT
+	j find_revert
+
+handle_area2_revert:
+	la $s1, area2_items
+	li $s2, AREA2_IT
+	j find_revert
+
+handle_area3_revert:
+	la $s1, area3_items
+	li $s2, AREA3_IT
+
+find_revert:
+	lw $s5, ITEM_TYPE($s1)
+	bne $s5, REVERT, find_revert_next
+	
+	lw $s5, ITEM_X($s1)
+	bgt $s3, $s5, find_revert_next
+	
+	subi $s5, $s5, REVERT_W
+	blt $s3, $s5, find_revert_next
+	
+	lw $s5, ITEM_Y($s1)
+	bgt $s4, $s5, find_revert_next
+	
+	subi $s5, $s5, REVERT_H
+	blt $s4, $s5, find_revert_next
+	
+	li $s5, TRUE
+	sw $s5, IS_CLAIMED($s1)
+	
+	# Calculate base_address + offset ($v0)
+	lw $s3, ITEM_X($s1)
+	lw $s4, ITEM_Y($s1)
+	sll $s4, $s4, 9
+	sll $s3, $s3, 2
+	add $s3, $s3, $s4		# Offset
+	li $s5, BASE_ADDRESS 		# Base address
+	add $v0, $s5, $s3		# $v0 = base + offset
+
+	li $s3, BG_COL
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -4($v0)
+	sw $s3, -16($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, 0($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, 0($v0)
+	sw $s3, -12($v0)
+	sw $s3, -16($v0)
+	sw $s3, -20($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -4($v0)
+	sw $s3, -16($v0)
+	sw $s3, -20($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $s3, -8($v0)
+	sw $s3, -12($v0)
+	sw $s3, -20($v0)
+	
+	la $s0, player
+	li $s3, FALSE
+	sw $s3, IS_BOOSTED($s0)
+	sw $s3, IS_WOOSTED($s0)
+	li $s3, START_SPEED
+	sw $s3, MOVEMENT_SPEED($s0)
+	li $s3, START_JHEIGHT
+	sw $s3, JUMP_HEIGHT($s0)
+	li $s3, START_JSPAN
+	sw $s3, JUMP_SPAN($s0)	
+	
+	j continue_collision
+
+find_revert_next:
+	# Get next possible item (increment by array length)
+	addi $s1, $s1, ITEM
+	addi $s0, $s0, 1
+	
+	# Check if there are still items to look at
+	blt $s0, $s2, find_revert
+	j continue_collision
+
+
 
 # ---------------------+= PAINTING THE SCREEN =+---------------------
 # Paint the map provided by...
@@ -1075,10 +1330,6 @@ on_plat_y:
 	la $t0, player
 	lw $t2, PLAYER_Y($t0)
 	bne $t2, $t1, off_plat
-	
-	li $v0, 1
-	li $a0, 222
-	syscall
 	
 	# Player is on this platform
 	li $t0, TRUE
@@ -1244,8 +1495,10 @@ complete_check:
 # Paint the player's cat at $v0
 paint_cat:
 	la $t0, player
-	lw $t0, IS_BOOSTED($t0)
-	beq $t0, TRUE, boost_cat
+	lw $t1, IS_BOOSTED($t0)
+	beq $t1, TRUE, boost_cat
+	lw $t1, IS_WOOSTED($t0)
+	beq $t1, TRUE, woost_cat
 
 	li $t3, BODY_COL
 	li $t4, SPOT_COL
@@ -1256,6 +1509,13 @@ paint_cat:
 boost_cat:
 	li $t3, BOOST_COL
 	li $t4, PALEBLUE
+	li $t5, EYES_COL
+
+	j cat_facing_right
+
+woost_cat:
+	li $t3, WOOST_COL
+	li $t4, ORANGE
 	li $t5, EYES_COL
 
 	j cat_facing_right
@@ -1442,6 +1702,8 @@ paint_item:
 	
 	lw $t1, ITEM_TYPE($t0)
 	beq $t1, STAR, paint_star
+	beq $t1, WOOST, paint_woost
+	beq $t1, REVERT, paint_revert
 	
 paint_boost:
 	# Check if boost is_claimed
@@ -1506,7 +1768,88 @@ paint_star:
 	
 	subi $v0, $v0, DISPLAY_W
 	sw $t3, -8($v0)
+	
+	j item_next
+	
+paint_woost:
+	# Skip if woost is_claimed
+	lw $t1, IS_CLAIMED($t0)
+	beq $t1, TRUE, item_next
+	
+	li $t3, WOOST_COL
+	li $t4, ORANGE
+	
+	sw $t3, -8($v0)
+	sw $t3, -24($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t4, -8($v0)
+	sw $t4, -12($v0)
+	sw $t3, -16($v0)
+	sw $t3, -20($v0)
+	sw $t3, -24($v0)
+	sw $t3, -28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t4, 0($v0)
+	sw $t3, -4($v0)
+	sw $t4, -8($v0)
+	sw $t4, -12($v0)
+	sw $t4, -16($v0)
+	sw $t3, -20($v0)
+	sw $t3, -24($v0)
+	sw $t3, -28($v0)
+	sw $t3, -32($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	sw $t4, -16($v0)
+	sw $t4, -20($v0)
+	sw $t4, -24($v0)
+	sw $t3, -28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+	sw $t3, -24($v0)
 
+	j item_next
+	
+paint_revert:
+	# Skip if revert is_claimed
+	lw $t1, IS_CLAIMED($t0)
+	beq $t1, TRUE, item_next
+	
+	li $t3, REVERT_COL
+	
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -16($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	sw $t3, -12($v0)
+	sw $t3, -16($v0)
+	sw $t3, -20($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -16($v0)
+	sw $t3, -20($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	sw $t3, -20($v0)
+	
 item_next:
 	# Get next possible item (increment by array length)
 	addi $s0, $s0, ITEM
