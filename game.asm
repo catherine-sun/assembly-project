@@ -203,7 +203,7 @@ area3:		.word	46, 90, 35, 6
 			46, 81, 6, 9,
 			75, 81, 6, 9,
 			106, 95, 16, 3, 
-			8, 66, 20, 44,
+			8, 66, 18, 44,
 			46, 20, 35, 2
 
 			
@@ -214,7 +214,7 @@ area1_plats:	.word 	23, 14, 3, 12, VERT, 18, 0, 2,
 			94, 50, 19, 4, VERT, 24, 0, 1
 
 area2_plats:	.word	30, 30, 12, 5, HORZ, 10, 0, 1,
-			84, 78, 10, 6, VERT, 16, 0, -1
+			84, 76, 10, 6, VERT, 18, 0, 1
 
 area3_plats:	.word	75, 34, 14, 4, HORZ, 10, 0, 1,
 			18, 44, 19, 4, HORZ, 34, 0, 1,
@@ -223,19 +223,19 @@ area3_plats:	.word	75, 34, 14, 4, HORZ, 10, 0, 1,
 		
 # Item locations:	(item_type, item_x, item_y, is_claimed)
 area1_items:	.word	BOOST, 16, 103, FALSE,
-			STAR, 14, 15, FALSE,
+			STAR, 14, 17, FALSE,
 			STAR, 52, 81, FALSE,
-			STAR, 110, 26, FALSE
+			STAR, 110, 26, FALSE,
 			
 area2_items:	.word	STAR, 38, 48, FALSE,
-			STAR, 14, 27, FALSE,
+			BOOST, 14, 27, FALSE,
 			STAR, 20, 78, FALSE,
-			BOOST, 88, 46, FALSE
+			STAR, 88, 46, FALSE
 
 area3_items:	.word	BOOST, 115, 107, FALSE,
 			STAR, 115, 93, FALSE,
 			STAR, 64, 18, FALSE,
-			STAR, 19, 64, FALSE
+			STAR, 17, 64, FALSE
 
 
 .text
@@ -281,7 +281,7 @@ paint_bg:
 	beq $t0, 2, paint_area2_bg
 	beq $t0, 3, paint_area3_bg
 
-paint_area1_bg:	
+paint_area1_bg:
 	li $a0, AREA1_N
 	la $a1, area1
 	li $a2, WALL_COL
@@ -1213,6 +1213,10 @@ complete_check:
 	jal get_player_pos
 	jal paint_cat
 	
+	# Check for win
+	lw $t0, star_count
+	beq $t0, 3, next_area
+	
 	j game_running
 
 	
@@ -1583,51 +1587,47 @@ paint_game_bar_num:
 	jr $ra
 	
 paint_two:
-	#sw $t3, 20($v0)
-	#sw $t3, 24($v0)
-	#sw $t3, 28($v0)
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
 
 	subi $v0, $v0, DISPLAY_W
-	#sw $t3, 24($v0)
+	sw $t3, 24($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t4, 24($v0)
-	sw $t3, 28($v0)
-	
-	subi $v0, $v0, DISPLAY_W
-	#sw $t3, 20($v0)
-	sw $t4, 24($v0)
 	sw $t3, 28($v0)
 	
 	subi $v0, $v0, DISPLAY_W
 	sw $t3, 20($v0)
-	#sw $t3, 24($v0)
-	sw $t3, 28($v0)
-
-	jr $ra
-	
-paint_three:
-	#sw $t3, 20($v0)
-	#sw $t3, 24($v0)
-	#sw $t3, 28($v0)
-	
-	subi $v0, $v0, DISPLAY_W
-	sw $t4, 24($v0)
 	sw $t3, 28($v0)
 	
 	subi $v0, $v0, DISPLAY_W
 	sw $t3, 20($v0)
 	sw $t3, 24($v0)
-	#sw $t3, 28($v0)
+	sw $t3, 28($v0)
+
+	jr $ra
+	
+paint_three:
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t4, 20($v0)
-	#sw $t3, 28($v0)
+	sw $t3, 28($v0)
 	
-	#subi $v0, $v0, DISPLAY_W
-	#sw $t3, 20($v0)
-	#sw $t3, 24($v0)
-	#sw $t3, 28($v0)
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
 	
 	jr $ra
 
@@ -1718,12 +1718,72 @@ get_player_pos:
 	add $v0, $t0, $t1		# $v0 = base + offset
 	jr $ra
 	
+# Head to next area
+next_area:
+	li $v0, 32
+	li $a0, SLEEP
+	syscall
+
+	# Reset star_count
+	sw $zero, star_count
+
+	# Increment area
+	lw $t0, current_area
+	addi $t0, $t0, 1
+	sw $t0, current_area
+	
+	beq $t0, 4, end
+	
+	# Update player position
+	beq $t0, 3, area3_pos
+area2_pos:
+	la $t0, player
+	li $t1, AREA2_X
+	sw $t1, PLAYER_X($t0)
+	li $t1, AREA2_Y
+	sw $t1, PLAYER_Y($t0)
+	
+	j reset_player
+
+area3_pos:
+	la $t0, player
+	li $t1, AREA3_X
+	sw $t1, PLAYER_X($t0)
+	li $t1, AREA3_Y
+	sw $t1, PLAYER_Y($t0)
+	
+reset_player:
+	# Reset player info
+	li $t1, RIGHT
+	sw $t1, PLAYER_DIR($t0)
+	li $t1, START_SPEED
+	sw $t1, MOVEMENT_SPEED($t0)
+	li $t1, START_JHEIGHT
+	sw $t1, JUMP_HEIGHT($t0)
+	li $t1, START_JSPAN
+	sw $t1, JUMP_SPAN($t0)
+	li $t1, FALSE
+	sw $t1, IS_BOOSTED($t0)
+	sw $t1, ON_PLAT($t0)
+	sw $t1, IS_MAX_RIGHT($t0)
+	sw $t1, IS_MAX_LEFT($t0)
+	sw $t1, IS_MAX_UP($t0)
+	li $t1, TRUE
+	sw $t1, IS_MAX_DOWN($t0)
+	
+	j main
+	
 # Reset to default values
 game_reset:
 	# Reset game time
 	la $t0, time_counter
 	li $t1, TIME_RESET
 	sw $t1, 0($t0)
+	
+	# Reset game area and stars
+	li $t0, 1
+	sw $t0, current_area
+	sw $zero, star_count
 	
 	# Reset player info
 	la $t0, player
