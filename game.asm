@@ -118,11 +118,12 @@
 .eqv	MOVEMENT_SPEED	20
 .eqv	JUMP_HEIGHT	24
 .eqv	JUMP_SPAN	28
-.eqv	ON_PLAT		32
-.eqv	IS_MAX_LEFT	36
-.eqv	IS_MAX_RIGHT	40
-.eqv	IS_MAX_UP	44
-.eqv	IS_MAX_DOWN	48
+.eqv	IS_BOOSTED	32
+.eqv	ON_PLAT		36
+.eqv	IS_MAX_LEFT	40
+.eqv	IS_MAX_RIGHT	44
+.eqv	IS_MAX_UP	48
+.eqv	IS_MAX_DOWN	52
 
 # Player initiation
 .eqv	AREA1_X		63
@@ -134,6 +135,9 @@
 .eqv	START_SPEED	1
 .eqv	START_JHEIGHT	16
 .eqv	START_JSPAN	3
+.eqv	BOOST_SPEED	1
+.eqv	BOOST_JHEIGHT	32
+.eqv	BOOST_JSPAN	3
 .eqv	TRUE		1
 .eqv	FALSE		0
 
@@ -154,10 +158,10 @@ star_count:	.word	0
 
 # Player info:		player_x	player_y	player_w	 player_h	player_dir
 player:		.word	AREA1_X,	AREA1_Y, 	12,		9,		RIGHT,
-#			movement_speed	jump_height	jump_span	on_plat		is_max_left
+#			movement_speed	jump_height	jump_span	is_boosted	on_plat
 			START_SPEED,	START_JHEIGHT,	START_JSPAN,	FALSE,		FALSE,
-#			is_max_right	is_max_up	is_max_down
-			FALSE,		FALSE,		TRUE
+#			is_max_left	is_max_right	is_max_up	is_max_down
+			FALSE,		FALSE,		FALSE,		TRUE
 
 
 # Area Maps:		(x of top left corner, y of top left corner, width, height) per rectangle
@@ -174,16 +178,16 @@ game_bar1:	.word	8, 113, 34, 1,
 			42, 114, 1, 9
 game_bar2:	.word	8, 114, 34, 9
 
-area1:		.word	40, 30, 6, 80,
+area1:		.word	40, 45, 6, 65,
 			46, 84, 36, 6,
 			106, 96, 14, 14,
 			70, 54, 19, 5,
 			78, 28, 42, 6,
 			8, 19, 14, 4,
-			8, 45, 16, 4,
-			24, 72, 16, 4,
-			8, 90, 16, 4,
-			26, 106, 14, 4
+			8, 55, 12, 4,
+			27, 80, 13, 4
+			8, 106, 14, 4,
+			32, 42, 14, 4
 			
 area2:		.word	8, 61, 23, 6,
 			8, 30, 9, 6,
@@ -218,7 +222,7 @@ area3_plats:	.word	75, 34, 14, 4, HORZ, 10, 0, 1,
 	
 		
 # Item locations:	(item_type, item_x, item_y, is_claimed)
-area1_items:	.word	BOOST, 16, 108, FALSE,
+area1_items:	.word	BOOST, 16, 103, FALSE,
 			STAR, 14, 15, FALSE,
 			STAR, 52, 81, FALSE,
 			STAR, 110, 26, FALSE
@@ -717,11 +721,8 @@ collision_true:
 	
 	
 handle_star:
-	# Checked stars counter
+	# Checked items counter
 	li $s0, 0
-	
-	la $s1, area1_items
-	li $s2, AREA1_IT
 	
 	# ($s3, $s4) = (x, y) position of the star that needs to be erased
 	subi $t4, $t4, BASE_ADDRESS
@@ -730,22 +731,40 @@ handle_star:
 	mfhi $s3
 	sra $s3, $s3, 2
 	mflo $s4
+	
+	lw $s7, current_area
+	beq $s7, 2, handle_area2_star
+	beq $s7, 3, handle_area3_star
+	
+handle_area1_star:
+	la $s1, area1_items
+	li $s2, AREA1_IT
+	j find_star
 
-find_collision_star:
+handle_area2_star:
+	la $s1, area2_items
+	li $s2, AREA2_IT
+	j find_star
+
+handle_area3_star:
+	la $s1, area3_items
+	li $s2, AREA3_IT
+
+find_star:
 	lw $s5, ITEM_TYPE($s1)
-	bne $s5, STAR, find_collision_star_next
+	bne $s5, STAR, find_star_next
 	
 	lw $s5, ITEM_X($s1)
-	bgt $s3, $s5, find_collision_star_next
+	bgt $s3, $s5, find_star_next
 	
 	subi $s5, $s5, STAR_W
-	blt $s3, $s5, find_collision_star_next
+	blt $s3, $s5, find_star_next
 	
 	lw $s5, ITEM_Y($s1)
-	bgt $s4, $s5, find_collision_star_next
+	bgt $s4, $s5, find_star_next
 	
 	subi $s5, $s5, STAR_H
-	blt $s4, $s5, find_collision_star_next
+	blt $s4, $s5, find_star_next
 	
 	li $s5, TRUE
 	sw $s5, IS_CLAIMED($s1)
@@ -783,18 +802,125 @@ find_collision_star:
 	sw $s0, star_count
 	
 	j continue_collision
-	
 
-find_collision_star_next:
+find_star_next:
 	# Get next possible item (increment by array length)
 	addi $s1, $s1, ITEM
 	addi $s0, $s0, 1
 	
 	# Check if there are still items to look at
-	blt $s0, $s2, find_collision_star
+	blt $s0, $s2, find_star
 	j continue_collision
 
+
 handle_boost:
+	# Checked items counter
+	li $s0, 0
+	
+	# ($s3, $s4) = (x, y) position of the star that needs to be erased
+	subi $t4, $t4, BASE_ADDRESS
+	li $s3, DISPLAY_W
+	div $t4, $s3
+	mfhi $s3
+	sra $s3, $s3, 2
+	mflo $s4
+	
+	lw $s7, current_area
+	beq $s7, 2, handle_area2_boost
+	beq $s7, 3, handle_area3_boost
+	
+handle_area1_boost:
+	la $s1, area1_items
+	li $s2, AREA1_IT
+	j find_boost
+
+handle_area2_boost:
+	la $s1, area2_items
+	li $s2, AREA2_IT
+	j find_boost
+
+handle_area3_boost:
+	la $s1, area3_items
+	li $s2, AREA3_IT
+
+find_boost:
+	lw $s5, ITEM_TYPE($s1)
+	bne $s5, BOOST, find_boost_next
+	
+	lw $s5, ITEM_X($s1)
+	bgt $s3, $s5, find_boost_next
+	
+	subi $s5, $s5, STAR_W
+	blt $s3, $s5, find_boost_next
+	
+	lw $s5, ITEM_Y($s1)
+	bgt $s4, $s5, find_boost_next
+	
+	subi $s5, $s5, STAR_H
+	blt $s4, $s5, find_boost_next
+	
+	li $s5, TRUE
+	sw $s5, IS_CLAIMED($s1)
+	
+	# Calculate base_address + offset ($v0)
+	lw $s3, ITEM_X($s1)
+	lw $s4, ITEM_Y($s1)
+	sll $s4, $s4, 9
+	sll $s3, $s3, 2
+	add $s3, $s3, $s4		# Offset
+	li $s5, BASE_ADDRESS 		# Base address
+	add $v0, $s5, $s3		# $v0 = base + offset
+	
+	li $t3, BG_COL
+	
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	sw $t3, -16($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+	
+	la $s0, player
+	li $s1, TRUE
+	sw $s1, IS_BOOSTED($s0)
+	li $s1, BOOST_SPEED
+	sw $s1, MOVEMENT_SPEED($s0)
+	li $s1, BOOST_JHEIGHT
+	sw $s1, JUMP_HEIGHT($s0)
+	li $s1, BOOST_JSPAN
+	sw $s1, JUMP_SPAN($s0)	
+
+	j continue_collision
+
+find_boost_next:
+	# Get next possible item (increment by array length)
+	addi $s1, $s1, ITEM
+	addi $s0, $s0, 1
+	
+	# Check if there are still items to look at
+	blt $s0, $s2, find_boost
 	j continue_collision
 	
 
@@ -1092,12 +1218,23 @@ complete_check:
 	
 # Paint the player's cat at $v0
 paint_cat:
+	la $t0, player
+	lw $t0, IS_BOOSTED($t0)
+	beq $t0, TRUE, boost_cat
+
 	li $t3, BODY_COL
 	li $t4, SPOT_COL
 	li $t5, EYES_COL
 	
 	j cat_facing_right
 
+boost_cat:
+	li $t3, BOOST_COL
+	li $t4, PALEBLUE
+	li $t5, EYES_COL
+
+	j cat_facing_right
+	
 erase_cat:
 	li $t3, BG_COL
 	li $t4, BG_COL
@@ -1284,17 +1421,11 @@ paint_item:
 paint_boost:
 	# Check if boost is_claimed
 	lw $t1, IS_CLAIMED($t0)
-	beq $t1, TRUE, erase_boost
+	beq $t1, TRUE, item_next
 	
 	li $t3, BOOST_COL
 	li $t4, PALEBLUE
-	j colour_boost
 	
-erase_boost:
-	li $t3, BG_COL
-	li $t4, BG_COL
-	
-colour_boost:
 	sw $t3, -4($v0)
 	sw $t4, -8($v0)
 	sw $t4, -12($v0)
@@ -1613,6 +1744,7 @@ game_reset:
 	li $t1, START_JSPAN
 	sw $t1, JUMP_SPAN($t0)
 	li $t1, FALSE
+	sw $t1, IS_BOOSTED($t0)
 	sw $t1, ON_PLAT($t0)
 	sw $t1, IS_MAX_RIGHT($t0)
 	sw $t1, IS_MAX_LEFT($t0)
