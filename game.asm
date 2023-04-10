@@ -65,6 +65,12 @@
 .eqv	AREA1_N		10
 .eqv	AREA1_MP	3
 .eqv	AREA1_IT	4
+.eqv	AREA2_N		9
+.eqv	AREA2_MP	2
+.eqv	AREA2_IT	4
+.eqv	AREA3_N		6
+.eqv	AREA3_MP	3
+.eqv	AREA3_IT	4
 
 # Array types:
 .eqv	SESSILE		16
@@ -115,13 +121,20 @@
 .eqv	IS_MAX_DOWN	48
 
 # Player initiation
-.eqv	START_X		63
-.eqv	START_Y		109
+.eqv	AREA1_X		63
+.eqv	AREA1_Y		109
+.eqv	AREA2_X		22
+.eqv	AREA2_Y		60
+.eqv	AREA3_X		68
+.eqv	AREA3_Y		89
 .eqv	START_SPEED	1
 .eqv	START_JHEIGHT	16
 .eqv	START_JSPAN	3
 .eqv	TRUE		1
 .eqv	FALSE		0
+
+.eqv	GAME_BAR_X	28
+.eqv	GAME_BAR_Y	120
 
 .eqv	TIME_RESET	2000
 
@@ -134,7 +147,7 @@ star_count:	.word	0
 
 
 # Player info:		player_x	player_y	player_w	 player_h	player_dir
-player:		.word	START_X,	START_Y, 	12,		9,		RIGHT,
+player:		.word	AREA1_X,	AREA1_Y, 	12,		9,		RIGHT,
 #			movement_speed	jump_height	jump_span	on_plat		is_max_left
 			START_SPEED,	START_JHEIGHT,	START_JSPAN,	FALSE,		FALSE,
 #			is_max_right	is_max_up	is_max_down
@@ -165,6 +178,23 @@ area1:		.word	40, 30, 6, 80,
 			24, 72, 16, 4,
 			8, 90, 16, 4,
 			26, 106, 14, 4
+			
+area2:		.word	8, 61, 23, 6,
+			8, 30, 9, 6,
+			63, 34, 11, 6,
+			74, 40, 6, 14,
+			80, 50, 16, 4,
+			46, 80, 10, 12,
+			54, 102, 14, 12
+			110, 59, 10, 7,
+			100, 66, 20, 44
+
+area3:		.word	46, 90, 35, 6
+			46, 81, 6, 9,
+			75, 81, 6, 9,
+			106, 95, 16, 3, 
+			8, 66, 20, 44,
+			46, 20, 35, 2
 
 			
 # Moving Platforms:	(x, y, w, h, dir, total movement, current frame, movement speed) per platform
@@ -172,12 +202,31 @@ area1:		.word	40, 30, 6, 80,
 area1_plats:	.word 	23, 14, 3, 12, VERT, 18, 0, 2,
 			52, 18, 12, 5, VERT, 26, 0, 1,
 			94, 50, 19, 4, VERT, 24, 0, 1
-			
+
+area2_plats:	.word	30, 30, 12, 5, HORZ, 10, 0, 1,
+			84, 78, 10, 6, VERT, 16, 0, -1
+
+area3_plats:	.word	75, 34, 14, 4, HORZ, 10, 0, 1,
+			18, 44, 19, 4, HORZ, 34, 0, 1,
+			64, 58, 20, 4, HORZ, 24, 0, 1
+	
+		
 # Item locations:	(item_type, item_x, item_y, is_claimed)
 area1_items:	.word	BOOST, 16, 108, FALSE,
 			STAR, 14, 15, FALSE,
 			STAR, 52, 81, FALSE,
 			STAR, 110, 26, FALSE
+			
+area2_items:	.word	STAR, 38, 48, FALSE,
+			STAR, 14, 27, FALSE,
+			STAR, 20, 78, FALSE,
+			BOOST, 88, 46, FALSE
+
+area3_items:	.word	BOOST, 115, 107, FALSE,
+			STAR, 115, 93, FALSE,
+			STAR, 64, 18, FALSE,
+			STAR, 19, 64, FALSE
+
 
 .text
 .globl main
@@ -191,17 +240,6 @@ main:
 	la $a1, border
 	li $a2, WALL_COL
 	li $a3, SESSILE
-	jal paint_map
-	
-	# Paint game area1
-	li $a0, 1
-	la $a1, bg
-	li $a2, BG_COL
-	jal paint_map
-	
-	li $a0, AREA1_N
-	la $a1, area1
-	li $a2, WALL_COL
 	jal paint_map
 	
 	# Paint game bar
@@ -219,14 +257,41 @@ main:
 	li $t3, LIGHTGRAY
 	sw $t3, 58400($t0)
 	
-	li $a0, 28
-	li $a1, 120
+	li $a0, GAME_BAR_X
+	li $a1, GAME_BAR_Y
 	jal paint_game_bar_text
+
+paint_bg:
+	li $a0, 1
+	la $a1, bg
+	li $a2, BG_COL
+	jal paint_map
 	
-	la $t0, current_area
-	lw $a2, 0($t0)
-	jal paint_game_bar_num
+	lw $t0, current_area
+	beq $t0, 2, paint_area2_bg
+	beq $t0, 3, paint_area3_bg
+
+paint_area1_bg:	
+	li $a0, AREA1_N
+	la $a1, area1
+	li $a2, WALL_COL
+	jal paint_map
 	
+	j game_running
+
+paint_area2_bg:
+	li $a0, AREA2_N
+	la $a1, area2
+	li $a2, WALL_COL
+	jal paint_map
+	
+	j game_running
+
+paint_area3_bg:
+	li $a0, AREA3_N
+	la $a1, area3
+	li $a2, WALL_COL
+	jal paint_map
 
 game_running:
 	# Decrement game time counter by 1
@@ -623,9 +688,6 @@ collision_plat:
 	li $t3, 1
 	la $s1, player			# $s1 stores the player info
 	sw $t3, ON_PLAT($s1)		# Player is on a platform
-	li $v0, 1
-	li $a0, 908
-	syscall
 	
 collision_true:
 	li $v0, 1			# A collision occurred
@@ -704,19 +766,41 @@ paint_game:
 	beqz $t0, fall_player
 
 paint_area:
+	li $a0, GAME_BAR_X
+	li $a1, GAME_BAR_Y
+	lw $a2, current_area
+	jal paint_game_bar_num
+	
 	# Paint area items
 	jal paint_items
-
-	# Push plat counter, on_plat tracker and platforms on stack
+	
+	# Push plat counter, on_plat tracker
 	addi $sp, $sp, -12
 	li $t0, 0
 	sw $t0, 8($sp)
 	sw $t0, 4($sp)
+	
+	# Push platforms onto stack
+	lw $t0, current_area
+	beq $t0, 2, paint_area2_plats
+	beq $t0, 3, paint_area3_plats
+
+paint_area1_plats:
 	la $t0, area1_plats
+	sw $t0, 0($sp)
+	j erase_plat
+
+paint_area2_plats:
+	la $t0, area2_plats
+	sw $t0, 0($sp)
+	j erase_plat
+
+paint_area3_plats:
+	la $t0, area3_plats
 	sw $t0, 0($sp)
 	
 erase_plat:
-	# Erase the platforms of area1
+	# Erase the platforms
 	li $a0, 1
 	lw $a1,  0($sp)
 	li $a2, BG_COL
@@ -853,7 +937,7 @@ plat_step_vert:
 	jal paint_cat
 
 paint_plat:
-	# Paint the platforms of area 1
+	# Paint the platforms
 	li $a0, 1
 	lw $a1, 0($sp)
 	li $a2, PLAT_COL
@@ -861,7 +945,7 @@ paint_plat:
 	jal paint_map
 	
 next_plat:
-	# Next platform in area1
+	# Next platform in area
 	lw $t0, 0($sp)
 	addi $t0, $t0, MOBILE
 	sw $t0, 0($sp)
@@ -871,7 +955,22 @@ next_plat:
 	addi $t0, $t0, 1
 	sw $t0, 8($sp)
 	
+	lw $t3, current_area
+	beq $t3, 2, check_area2_plats
+	beq $t3, 3, check_area3_plats
+
+check_area1_plats:
 	li $t1, AREA1_MP
+	j complete_check
+
+check_area2_plats:
+	li $t1, AREA2_MP
+	j complete_check
+
+check_area3_plats:
+	li $t1, AREA3_MP
+
+complete_check:
 	blt $t0, $t1, erase_plat
 
 	# Reclaim space
@@ -1037,21 +1136,31 @@ cat_facing_left:
 	
 
 paint_items:
-	lw $t0, current_area
-	beq $t0, 2, paint_items_complete
-	beq $t0, 3, paint_items_complete
-	
 	# Completed items counter
 	li $s0, 0
 	li $s1, 0
-	
-paint_item:
-	li $v0, 1
-	move $a0, $s0
-	syscall
 
-	# Address of current item ($t0)
+paint_step:
+	lw $t7, current_area
+	beq $t7, 2, paint_area2_items
+	beq $t7, 3, paint_area3_items
+	
+paint_area1_items:
 	la $t0, area1_items
+	li $s2, AREA1_IT
+	j paint_item
+
+paint_area2_items:
+	la $t0, area2_items
+	li $s2, AREA2_IT
+	j paint_item
+
+paint_area3_items:
+	la $t0, area3_items
+	li $s2, AREA3_IT
+
+paint_item:
+	# Address of current item ($t0)
 	add $t0, $t0, $s0
 	
 	# Calculate base_address + offset ($v0)
@@ -1147,13 +1256,7 @@ item_next:
 	addi $s1, $s1, 1
 	
 	#Check if there are still items to paint
-	li $t1, AREA1_IT
-	blt $s1, $t1, paint_item
-
-paint_items_complete:
-	li $v0, 4
-	la $a0, newline
-	syscall
+	blt $s1, $s2, paint_step
 	jr $ra
 
 
@@ -1223,6 +1326,7 @@ paint_game_bar_num:
 	add $v0, $t0, $t1		# $v0 = base + offset
 	
 	li $t3, BRIGHT_RED
+	li $t4, MUTED_BLURPLE
 	
 	beq $a2, 2, paint_two
 	beq $a2, 3, paint_three
@@ -1247,47 +1351,51 @@ paint_game_bar_num:
 	jr $ra
 	
 paint_two:
-	sw $t3, 20($v0)
-	sw $t3, 24($v0)
-	sw $t3, 28($v0)
+	#sw $t3, 20($v0)
+	#sw $t3, 24($v0)
+	#sw $t3, 28($v0)
 
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, 24($v0)
+	#sw $t3, 24($v0)
 	
 	subi $v0, $v0, DISPLAY_W
+	sw $t4, 24($v0)
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	#sw $t3, 20($v0)
+	sw $t4, 24($v0)
 	sw $t3, 28($v0)
 	
 	subi $v0, $v0, DISPLAY_W
 	sw $t3, 20($v0)
-	sw $t3, 28($v0)
-	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 20($v0)
-	sw $t3, 24($v0)
+	#sw $t3, 24($v0)
 	sw $t3, 28($v0)
 
 	jr $ra
 	
 paint_three:
-	sw $t3, 20($v0)
-	sw $t3, 24($v0)
-	sw $t3, 28($v0)
+	#sw $t3, 20($v0)
+	#sw $t3, 24($v0)
+	#sw $t3, 28($v0)
 	
 	subi $v0, $v0, DISPLAY_W
-	sw $t3, 28($v0)
-	
-	subi $v0, $v0, DISPLAY_W
-	sw $t3, 20($v0)
-	sw $t3, 24($v0)
-	sw $t3, 28($v0)
-	
-	subi $v0, $v0, DISPLAY_W
+	sw $t4, 24($v0)
 	sw $t3, 28($v0)
 	
 	subi $v0, $v0, DISPLAY_W
 	sw $t3, 20($v0)
 	sw $t3, 24($v0)
-	sw $t3, 28($v0)
+	#sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t4, 20($v0)
+	#sw $t3, 28($v0)
+	
+	#subi $v0, $v0, DISPLAY_W
+	#sw $t3, 20($v0)
+	#sw $t3, 24($v0)
+	#sw $t3, 28($v0)
 	
 	jr $ra
 
@@ -1313,9 +1421,9 @@ game_reset:
 	
 	# Reset player info
 	la $t0, player
-	li $t1, START_X
+	li $t1, AREA1_X
 	sw $t1, PLAYER_X($t0)
-	li $t1, START_Y
+	li $t1, AREA1_Y
 	sw $t1, PLAYER_Y($t0)
 	li $t1, 12
 	sw $t1, PLAYER_W($t0)
