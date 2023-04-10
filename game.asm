@@ -45,6 +45,13 @@
 .eqv	BODY_COL	0xadd07d
 .eqv	SPOT_COL	0x5bbe74
 .eqv	EYES_COL	0x332935
+.eqv	BOOST_COL	0x82d3f4
+.eqv	PALEBLUE	0xc0e3f1
+.eqv	STAR_COL	0xf4be82
+.eqv	LIGHTGRAY	0xc8cacf
+.eqv	BLURPLE		0x5d6fc7
+.eqv	MUTED_BLURPLE	0x445195
+.eqv	BRIGHT_RED	0xf36776
 
 # Boundaries:
 .eqv	DISPLAY_W	512
@@ -53,14 +60,16 @@
 .eqv	LOWER_YLIM	0
 .eqv	UPPER_YLIM	109
 
-# Number of Rectangles (per Map):
+# Number of Rectangles/Objects/Items (per Map):
 .eqv	BORDER_N	4
-.eqv	AREA1_N		9
+.eqv	AREA1_N		10
 .eqv	AREA1_MP	3
+.eqv	AREA1_IT	4
 
-# Rectangle type:
+# Array types:
 .eqv	SESSILE		16
 .eqv	MOBILE		32
+.eqv	ITEM		16
 
 # Moving object indices:
 .eqv	OBJ_X		0
@@ -71,6 +80,16 @@
 .eqv	OBJ_MOVEMENT	20
 .eqv	OBJ_FRAME	24
 .eqv	OBJ_SPEED	28
+
+# Item indicies:
+.eqv	ITEM_TYPE	0
+.eqv	ITEM_X		4
+.eqv	ITEM_Y		8
+.eqv	IS_CLAIMED	12
+
+# Item Types:
+.eqv	BOOST		1
+.eqv	STAR		2
 
 # Directions:
 .eqv	LEFT		1
@@ -110,6 +129,8 @@
 padding:	.space	36000
 time_counter:	.word	TIME_RESET
 newline:	.asciiz	"\n"
+current_area:	.word	1
+star_count:	.word	0
 
 
 # Player info:		player_x	player_y	player_w	 player_h	player_dir
@@ -127,6 +148,12 @@ border:		.word	0, 0, 128, 8,
 			0, 8, 8, 102
 			
 bg:		.word	8, 8, 112, 102
+		
+game_bar1:	.word	8, 113, 34, 1,
+			8, 123, 34, 1,
+			7, 114, 1, 9,
+			42, 114, 1, 9
+game_bar2:	.word	8, 114, 34, 9
 
 area1:		.word	40, 30, 6, 80,
 			46, 84, 36, 6,
@@ -134,17 +161,23 @@ area1:		.word	40, 30, 6, 80,
 			70, 54, 19, 5,
 			78, 28, 42, 6,
 			8, 19, 14, 4,
-			8, 48, 14, 4,
-			26, 72, 14, 4,
-			8, 106, 14, 4
+			8, 45, 16, 4,
+			24, 72, 16, 4,
+			8, 90, 16, 4,
+			26, 106, 14, 4
 
 			
 # Moving Platforms:	(x, y, w, h, dir, total movement, current frame, movement speed) per platform
 #			(x,y) top left corner during highest, leftmost position
-area1_plats:	.word 	23, 14, 3, 12, VERT, 35, 0, 2,
-			52, 18, 12, 5, VERT, 28, 0, 1,
+area1_plats:	.word 	23, 14, 3, 12, VERT, 18, 0, 2,
+			52, 18, 12, 5, VERT, 26, 0, 1,
 			94, 50, 19, 4, VERT, 24, 0, 1
-
+			
+# Item locations:	(item_type, item_x, item_y, is_claimed)
+area1_items:	.word	BOOST, 16, 108, FALSE,
+			STAR, 14, 15, FALSE,
+			STAR, 52, 81, FALSE,
+			STAR, 110, 26, FALSE
 
 .text
 .globl main
@@ -170,6 +203,30 @@ main:
 	la $a1, area1
 	li $a2, WALL_COL
 	jal paint_map
+	
+	# Paint game bar
+	li $a0, 4
+	la $a1, game_bar1
+	li $a2, BLURPLE
+	jal paint_map
+	
+	li $a0, 1
+	la $a1, game_bar2
+	li $a2, MUTED_BLURPLE
+	jal paint_map
+	
+	la $t0, BASE_ADDRESS
+	li $t3, LIGHTGRAY
+	sw $t3, 58400($t0)
+	
+	li $a0, 28
+	li $a1, 120
+	jal paint_game_bar_text
+	
+	la $t0, current_area
+	lw $a2, 0($t0)
+	jal paint_game_bar_num
+	
 
 game_running:
 	# Decrement game time counter by 1
@@ -647,6 +704,9 @@ paint_game:
 	beqz $t0, fall_player
 
 paint_area:
+	# Paint area items
+	jal paint_items
+
 	# Push plat counter, on_plat tracker and platforms on stack
 	addi $sp, $sp, -12
 	li $t0, 0
@@ -976,6 +1036,261 @@ cat_facing_left:
 	jr $ra
 	
 
+paint_items:
+	lw $t0, current_area
+	beq $t0, 2, paint_items_complete
+	beq $t0, 3, paint_items_complete
+	
+	# Completed items counter
+	li $s0, 0
+	li $s1, 0
+	
+paint_item:
+	li $v0, 1
+	move $a0, $s0
+	syscall
+
+	# Address of current item ($t0)
+	la $t0, area1_items
+	add $t0, $t0, $s0
+	
+	# Calculate base_address + offset ($v0)
+	lw $t1, ITEM_X($t0)
+	lw $t2, ITEM_Y($t0)
+	sll $t2, $t2, 9
+	sll $t1, $t1, 2
+	add $t1, $t1, $t2		# Offset
+	li $t2, BASE_ADDRESS 		# Base address
+	add $v0, $t2, $t1		# $v0 = base + offset
+	
+	lw $t1, ITEM_TYPE($t0)
+	beq $t1, STAR, paint_star
+	
+paint_boost:
+	# Check if boost is_claimed
+	lw $t1, IS_CLAIMED($t0)
+	beq $t1, TRUE, erase_boost
+	
+	li $t3, BOOST_COL
+	li $t4, PALEBLUE
+	j colour_boost
+	
+erase_boost:
+	li $t3, BG_COL
+	li $t4, BG_COL
+	
+colour_boost:
+	sw $t3, -4($v0)
+	sw $t4, -8($v0)
+	sw $t4, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t4, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t4, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t4, -12($v0)
+	sw $t3, -16($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+	
+	j item_next
+	
+paint_star:
+	# Check if star is_claimed
+	lw $t1, IS_CLAIMED($t0)
+	beq $t1, TRUE, erase_star
+	
+	li $t3, STAR_COL
+	j colour_star
+
+erase_star:
+	li $t3, BG_COL
+	
+colour_star:
+	sw $t3, -4($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -12($v0)
+	sw $t3, -16($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -8($v0)
+
+item_next:
+	# Get next possible item (increment by array length)
+	addi $s0, $s0, ITEM
+	addi $s1, $s1, 1
+	
+	#Check if there are still items to paint
+	li $t1, AREA1_IT
+	blt $s1, $t1, paint_item
+
+paint_items_complete:
+	li $v0, 4
+	la $a0, newline
+	syscall
+	jr $ra
+
+
+# ($a0, $a1) = (x, y) of bottom right corner of "Area"	
+paint_game_bar_text:
+	sll $t2, $a1, 9
+	sll $t1, $a0, 2
+	add $t1, $t1, $t2		# Offset
+	li $t0, BASE_ADDRESS 		# Base address
+	add $v0, $t0, $t1		# $v0 = base + offset
+	
+	li $t3, LIGHTGRAY
+	
+	sw $t3, -0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -8($v0)
+	sw $t3, -20($v0)
+	sw $t3, -24($v0)
+	sw $t3, -40($v0)
+	sw $t3, -48($v0)
+	sw $t3, -60($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -0($v0)
+	sw $t3, -8($v0)
+	sw $t3, -24($v0)
+	sw $t3, -40($v0)
+	sw $t3, -48($v0)
+	sw $t3, -60($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -0($v0)
+	sw $t3, -16($v0)
+	sw $t3, -24($v0)
+	sw $t3, -40($v0)
+	sw $t3, -48($v0)
+	sw $t3, -52($v0)
+	sw $t3, -56($v0)
+	sw $t3, -60($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -0($v0)
+	sw $t3, -4($v0)
+	sw $t3, -16($v0)
+	sw $t3, -20($v0)
+	sw $t3, -24($v0)
+	sw $t3, -32($v0)
+	sw $t3, -36($v0)
+	sw $t3, -40($v0)
+	sw $t3, -48($v0)
+	sw $t3, -60($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, -52($v0)
+	sw $t3, -56($v0)
+
+	jr $ra
+	
+
+# ($a0, $a1) = (x, y) of bottom right corner of "Area"
+# $a2 = area1, 2, or 3
+paint_game_bar_num:
+	sll $t2, $a1, 9
+	sll $t1, $a0, 2
+	add $t1, $t1, $t2		# Offset
+	li $t0, BASE_ADDRESS 		# Base address
+	add $v0, $t0, $t1		# $v0 = base + offset
+	
+	li $t3, BRIGHT_RED
+	
+	beq $a2, 2, paint_two
+	beq $a2, 3, paint_three
+	
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 24($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 24($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 24($v0)
+	
+	jr $ra
+	
+paint_two:
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 24($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+
+	jr $ra
+	
+paint_three:
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 28($v0)
+	
+	subi $v0, $v0, DISPLAY_W
+	sw $t3, 20($v0)
+	sw $t3, 24($v0)
+	sw $t3, 28($v0)
+	
+	jr $ra
+
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
 # Return the address of the player's current position
 get_player_pos:
@@ -985,7 +1300,7 @@ get_player_pos:
 	sll $t2, $t2, 9			# Display With in Pixels*player_y
 	sll $t1, $t1, 2			# Unit Width in Pixels*player_x
 	add $t1, $t1, $t2		# Offset
-	li $t0, BASE_ADDRESS 		# Base address for display
+	li $t0, BASE_ADDRESS 		# Base address
 	add $v0, $t0, $t1		# $v0 = base + offset
 	jr $ra
 	
