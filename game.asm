@@ -71,7 +71,7 @@
 .eqv	AREA1_IT	5
 .eqv	AREA2_N		9
 .eqv	AREA2_MP	2
-.eqv	AREA2_IT	7
+.eqv	AREA2_IT	6
 .eqv	AREA3_N		6
 .eqv	AREA3_MP	2
 .eqv	AREA3_IT	7
@@ -145,7 +145,7 @@
 .eqv	AREA3_Y		89
 .eqv	START_SPEED	1
 .eqv	START_JHEIGHT	20
-.eqv	START_JSPAN	4
+.eqv	START_JSPAN	3
 .eqv	BOOST_SPEED	1
 .eqv	BOOST_JHEIGHT	32
 .eqv	BOOST_JSPAN	2
@@ -160,7 +160,7 @@
 .eqv	SCORE_X		65
 .eqv	SCORE_Y		119
 
-.eqv	TIME_RESET	2000
+.eqv	TIME_RESET	10000
 
 .data
 padding:	.space	36000
@@ -217,7 +217,7 @@ area3:		.word	46, 90, 35, 6
 			46, 81, 6, 9,
 			75, 81, 6, 9,
 			106, 95, 16, 3, 
-			8, 66, 18, 44,
+			8, 61, 18, 49,
 			46, 20, 35, 2
 
 			
@@ -246,16 +246,15 @@ area2_items:	.word	STAR, 38, 48, FALSE,
 			STAR, 20, 78, FALSE,
 			STAR, 88, 46, FALSE,
 			WOOST, 54, 78, FALSE,
-			WOOST, 72, 32, FALSE,
 			REVERT, 92, 108, FALSE
 
 area3_items:	.word	BOOST, 115, 107, FALSE,
 			STAR, 115, 93, FALSE,
 			STAR, 64, 18, FALSE,
-			STAR, 17, 64, FALSE,
-			WOOST, 66, 32, FALSE,
-			REVERT, 65, 55, FALSE,
-			BOOST, 17, 54, FALSE
+			STAR, 17, 59, FALSE,
+			REVERT, 66, 32, FALSE,
+			WOOST, 65, 55, FALSE,
+			BOOST, 17, 49, FALSE
 
 
 .text
@@ -2096,7 +2095,7 @@ next_area:
 	addi $t0, $t0, 1
 	sw $t0, current_area
 	
-	beq $t0, 4, end
+	beq $t0, 4, winner
 	
 	# Update player position
 	beq $t0, 3, area3_pos
@@ -2169,6 +2168,7 @@ game_reset:
 	sw $t1, JUMP_SPAN($t0)
 	li $t1, FALSE
 	sw $t1, IS_BOOSTED($t0)
+	sw $t1, IS_WOOSTED($t0)
 	sw $t1, ON_PLAT($t0)
 	sw $t1, IS_MAX_RIGHT($t0)
 	sw $t1, IS_MAX_LEFT($t0)
@@ -2176,7 +2176,51 @@ game_reset:
 	li $t1, TRUE
 	sw $t1, IS_MAX_DOWN($t0)
 	
+	
+	# Reset pickups
+	la $t0, area1_items
+	li $t1, FALSE
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	
+	la $t0, area2_items
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	
+	la $t0, area3_items
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	addi $t0, $t0, ITEM
+	sw $t1, IS_CLAIMED($t0)
+	
 	j main
+
+winner:
 
 end:
 	li $v0, 10			# Terminate the program gracefully
