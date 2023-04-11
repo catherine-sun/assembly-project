@@ -220,6 +220,12 @@ area3:		.word	46, 90, 35, 6
 			8, 61, 18, 49,
 			46, 20, 35, 2
 
+win:		.word	32, 48, 64, 30
+win_border:	.word	32, 47, 64, 1,
+			32, 78, 64, 1,
+			31, 48, 1, 30,
+			96, 48, 1, 30
+
 			
 # Moving Platforms:	(x, y, w, h, dir, total movement, current frame, movement speed) per platform
 #			(x,y) top left corner during highest, leftmost position
@@ -255,7 +261,6 @@ area3_items:	.word	BOOST, 115, 107, FALSE,
 			REVERT, 66, 32, FALSE,
 			WOOST, 65, 55, FALSE,
 			BOOST, 17, 49, FALSE
-
 
 .text
 .globl main
@@ -2221,6 +2226,101 @@ game_reset:
 	j main
 
 winner:
+	li $a0, 1
+	la $a1, win
+	li $a2, MUTED_BLURPLE
+	li $a3, SESSILE
+	jal paint_map
+	li $a0, 4
+	la $a1, win_border
+	li $a2, BLURPLE
+	li $a3, SESSILE
+	jal paint_map
+	
+	la $t0, BASE_ADDRESS
+	addi $t0, $t0, 33516
+	li $t3, PALEBLUE
+	
+	sw $t3, 44($t0)
+	sw $t3, 28($t0)
+	sw $t3, 16($t0)
+	sw $t3, 0($t0)
+	sw $t3, -8($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, 44($t0)
+	sw $t3, 40($t0)
+	sw $t3, 28($t0)
+	sw $t3, 16($t0)
+	sw $t3, 4($t0)
+	sw $t3, -4($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, 44($t0)
+	sw $t3, 36($t0)
+	sw $t3, 28($t0)
+	sw $t3, 16($t0)
+	sw $t3, 4($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, 44($t0)
+	sw $t3, 32($t0)
+	sw $t3, 28($t0)
+	sw $t3, 16($t0)
+	sw $t3, 4($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, 44($t0)
+	sw $t3, 28($t0)
+	sw $t3, 16($t0)
+	sw $t3, 4($t0)
+	sw $t3, -12($t0)
+
+	la $t0, BASE_ADDRESS
+	addi $t0, $t0, 32976
+	li $t3, STAR_COL
+	
+	sw $t3, -4($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, -4($t0)
+	sw $t3, -8($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, 0($t0)
+	sw $t3, -4($t0)
+	sw $t3, -8($t0)
+	sw $t3, -12($t0)
+	sw $t3, -16($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, -8($t0)
+	
+	la $t0, BASE_ADDRESS
+	addi $t0, $t0, 33080
+	
+	sw $t3, -4($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, -4($t0)
+	sw $t3, -8($t0)
+	sw $t3, -12($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, 0($t0)
+	sw $t3, -4($t0)
+	sw $t3, -8($t0)
+	sw $t3, -12($t0)
+	sw $t3, -16($t0)
+	
+	subi $t0, $t0, DISPLAY_W
+	sw $t3, -8($t0)
 
 end:
 	li $v0, 10			# Terminate the program gracefully
