@@ -14,23 +14,24 @@
 #
 # Which milestones have been reached in this submission?
 # (See the assignment handout for descriptions of the milestones)
-# - Milestone 1/2/3 (choose the one the applies)
+# - Milestone 3
 #
 # Which approved features have been implemented for milestone 3?
 # (See the assignment handout for the list of additional features)
-# 1. (fill in the feature, if any)
-# 2. (fill in the feature, if any)
-# 3. (fill in the feature, if any)
-# ... (add more if necessary)
+# 1. Score
+# 2. Win condition
+# 3. Moving platforms
+# 4. Different levels
+# 5. Pick up effects
 #
 # Link to video demonstration for final submission:
-# - (insert YouTube / MyMedia / other URL here). Make sure we can view it!
+# - https://youtu.be/8c4mmzQEHuo
 #
 # Are you OK with us sharing the video with people outside course staff?
-# - yes / no / yes, and please share this project github link as well!
+# - no
 #
 # Any additional information that the TA needs to know:
-# - (write here, if any)
+# - n/a
 #
 #####################################################################
 
@@ -165,7 +166,6 @@
 .data
 padding:	.space	36000
 time_counter:	.word	TIME_RESET
-newline:	.asciiz	"\n"
 current_area:	.word	1
 star_count:	.word	0
 
@@ -221,6 +221,7 @@ area3:		.word	46, 90, 35, 6
 			46, 20, 35, 2
 
 win:		.word	32, 48, 64, 30
+
 win_border:	.word	32, 47, 64, 1,
 			32, 78, 64, 1,
 			31, 48, 1, 30,
@@ -626,6 +627,7 @@ fall_next:
 	
 	j paint_game
 
+
 # ---------------------+= CHECKING COLLISIONS =+---------------------
 # $a0 = expected movement (>0)
 # $a1 = direction of movement
@@ -843,7 +845,7 @@ handle_boost:
 	# Checked items counter
 	li $s0, 0
 	
-	# ($s3, $s4) = (x, y) position of the star that needs to be erased
+	# ($s3, $s4) = (x, y) position of the boost that needs to be erased
 	subi $t4, $t4, BASE_ADDRESS
 	li $s3, DISPLAY_W
 	div $t4, $s3
@@ -956,7 +958,7 @@ handle_woost:
 	# Checked items counter
 	li $s0, 0
 	
-	# ($s3, $s4) = (x, y) position of the star that needs to be erased
+	# ($s3, $s4) = (x, y) position of the woost that needs to be erased
 	subi $t4, $t4, BASE_ADDRESS
 	li $s3, DISPLAY_W
 	div $t4, $s3
@@ -1179,7 +1181,6 @@ find_revert_next:
 	# Check if there are still items to look at
 	blt $s0, $s2, find_revert
 	j continue_collision
-
 
 
 # ---------------------+= PAINTING THE SCREEN =+---------------------
@@ -2071,7 +2072,6 @@ colour_score:
 	
 	jr $ra
 	
-	
 
 # ----------------------+= HELPER FUNCTIONS =+-----------------------
 # Return the address of the player's current position
@@ -2104,6 +2104,7 @@ next_area:
 	
 	# Update player position
 	beq $t0, 3, area3_pos
+
 area2_pos:
 	la $t0, player
 	li $t1, AREA2_X
